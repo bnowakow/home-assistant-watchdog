@@ -1,0 +1,56 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IntelliJ IDEA / Kotlin IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Gradle / Kotlin build output
+.gradle/
+build/
+out/
+.kotlin/
+
+# Vaadin / frontend generated output
+.vaadin/
+src/main/bundles/
+src/main/frontend/generated/
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+vite.generated.ts
+types.d.ts
+
+# Spring Boot / local runtime
+logs/
+*.log
+target/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.sample
+!.env.*.sample
+application-local.properties
+application-local.yaml
+application-local.yml
+
+# Docker/local persistent data
+docker-data/
+data/
+
+# Test and coverage output
+coverage/
+.nyc_output/
+jacoco.exec
+
+# Temporary files
+tmp/
+temp/

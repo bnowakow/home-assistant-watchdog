@@ -1,0 +1,13 @@
+.git
+.gradle
+.idea
+.kotlin
+.vaadin
+build
+docker-data
+logs
+node_modules
+target
+.env
+.env.*
+!.env.sample

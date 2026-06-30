@@ -1,0 +1,788 @@
+# ============================================================
+# Home Assistant Watchdog - System Specification
+#
+# Source of truth for architecture, database, business rules,
+# providers, notifications, and UI behavior.
+# ============================================================
+
+openapi: 3.0.3
+info:
+  title: Home Assistant Watchdog
+  version: 0.1.0
+
+x-architecture:
+  language: Kotlin
+  framework: Spring Boot
+  javaVersion: 21
+  buildTool: Gradle Kotlin DSL
+  primaryUi: Vaadin server-side UI
+  persistence:
+    database: PostgreSQL
+    access: Spring Data JDBC
+    migrations: Flyway
+    rules:
+      - All DDL MUST live in Flyway migrations under `src/main/resources/db/migration/`.
+      - Existing applied migrations MUST NOT be edited; add a new migration instead.
+      - All custom SQL MUST use parameterized statements.
+      - All persisted timestamps MUST be UTC.
+  runtime:
+    initialTarget: Laptop
+    laterTarget: Server
+    postgres: Docker container with mounted data volume
+  components:
+    - name: Authentication and authorization
+      description: >
+        Use the same authentication style as CoZaDzban: Google OIDC login handled server-side
+        by Spring Security, Vaadin views protected by server session, and no OAuth tokens exposed
+        to frontend JavaScript. Start with ADMIN users and an explicit role model so USER behavior
+        can be defined later.
+    - name: Vaadin UI
+      description: >
+        Server-side UI for device inventory, groups, group-level rules, effective rule
+        inspection, check history, and notification settings.
+    - name: Scheduler
+      description: >
+        Periodically evaluates all enabled devices and records check results. Also supports
+        manual check runs from the UI.
+    - name: Rule engine
+      description: >
+        Resolves effective rules from device group membership, compares provider snapshots
+        to desired state, and decides whether to auto-fix or notify.
+    - name: Provider abstraction
+      description: >
+        Core monitoring code depends on a provider interface. Zigbee2MQTT is the first
+        provider, Home Assistant API is the second, and future APIs can be added later.
+    - name: Zigbee2MQTT provider
+      description: >
+        Uses MQTT to discover Zigbee devices, cache state, observe availability, and publish
+        desired-state fixes. It does not scrape the Zigbee2MQTT frontend and does not talk
+        directly to the coordinator serial/Socat port.
+    - name: Zigbee2MQTT bridge health
+      description: >
+        Checks whether the active Zigbee2MQTT add-on/bridge is running and healthy. The initial
+        active Zigbee2MQTT instance is named `zigbee2mqtt-2`.
+    - name: Home Assistant provider
+      description: >
+        Uses the Home Assistant REST API for non-Zigbee entities and later may use the
+        WebSocket API for live events.
+    - name: Notifications
+      description: >
+        Sends selected mismatch/offline/battery/fix alerts through Pushover with dedupe and
+        cooldowns.
+    - name: Parameter history
+      description: >
+        Stores changes of device parameters that are checked by rules for future debugging.
+        History is change-oriented by default to avoid storing a full snapshot on every check.
+
+x-provider-model:
+  providerTypes:
+    - ZIGBEE2MQTT
+    - HOME_ASSISTANT
+    - CUSTOM_HTTP
+    - CUSTOM_COMMAND
+  deviceProviderInterface:
+    methods:
+      - name: discoverDevices
+        returns: List<DiscoveredDevice>
+      - name: readSnapshot
+        input: Device
+        returns: DeviceSnapshot
+      - name: applyDesiredState
+        input: Device, DevicePropertyRef, desired JSON value
+        returns: FixAttemptResult
+      - name: supportedProperties
+        input: Device
+        returns: List<PropertyMetadata>
+      - name: modelKey
+        input: DiscoveredDevice
+        returns: Provider-specific stable model key used for homogeneous groups
+  deviceIdentity:
+    ZIGBEE2MQTT:
+      stableId: ieee_address
+      examples:
+        - "0x54ef4410005e77ba"
+        - "0x54ef4410005e776f"
+        - "0x18fc26000005dff6"
+    HOME_ASSISTANT:
+      stableId: entity_id or device_id
+      examples:
+        - "light.bedroom_lamp"
+        - "climate.bedroom_thermostat"
+        - "sensor.some_battery"
+    CUSTOM_HTTP:
+      stableId: configured external id
+    CUSTOM_COMMAND:
+      stableId: configured external id
+  propertyReferences:
+    description: >
+      Rules use provider-neutral property references so one rule engine can work across
+      Zigbee2MQTT, Home Assistant, and future providers.
+    fields:
+      - provider_type
+      - property_path
+      - optional endpoint
+      - optional capability
+      - comparison_operator
+      - desired_value_json
+    examples:
+      - provider_type: ZIGBEE2MQTT
+        property_path: operation_mode_right
+        comparison_operator: EQUALS
+        desired_value_json: '"decoupled"'
+      - provider_type: ZIGBEE2MQTT
+        property_path: state_right
+        comparison_operator: EQUALS
+        desired_value_json: '"ON"'
+      - provider_type: HOME_ASSISTANT
+        property_path: state
+        comparison_operator: EQUALS
+        desired_value_json: '"on"'
+      - provider_type: HOME_ASSISTANT
+        property_path: attributes.battery_level
+        comparison_operator: GREATER_THAN_OR_EQUAL
+        desired_value_json: "25"
+
+x-zigbee2mqtt:
+  integration: MQTT
+  activeInstance: zigbee2mqtt-2
+  baseTopicDefault: zigbee2mqtt-2
+  broker:
+    defaultUri: mqtt://core-mosquitto:1883
+    usernameEnv: WATCHDOG_MQTT_USERNAME
+    passwordEnv: WATCHDOG_MQTT_PASSWORD
+    knownPorts:
+      - port: 1883
+        protocol: Normal MQTT
+      - port: 1884
+        protocol: MQTT over WebSocket
+      - port: 8883
+        protocol: Normal MQTT with SSL
+      - port: 8884
+        protocol: MQTT over WebSocket with SSL
+    note: >
+      Store real MQTT passwords only in local `.env`/deployment secrets, never in committed docs.
+  mqttSubscriptions:
+    - topic: zigbee2mqtt-2/bridge/devices
+      purpose: Discover devices, IEEE addresses, friendly names, exposes metadata, and power source.
+    - topic: zigbee2mqtt-2/bridge/state
+      purpose: Observe Zigbee2MQTT bridge health.
+    - topic: zigbee2mqtt-2/+/availability
+      purpose: Observe per-device availability when enabled.
+    - topic: zigbee2mqtt-2/+
+      purpose: Cache latest device state payloads.
+  mqttPublishes:
+    - topicPattern: zigbee2mqtt-2/<friendly_name>/set
+      purpose: Apply configured desired-state fixes.
+  deviceMatching:
+    primaryKey: ieee_address
+    note: Friendly names can change and must not be used as stable identity.
+  healthModel:
+    mainsDevices:
+      - availability topic status
+      - latest state freshness
+      - optional safe read/request check where provider supports it
+    batteryDevices:
+      - latest state freshness
+      - battery level
+      - availability when meaningful
+      - no expectation that sleeping devices respond immediately
+  bridgeHealth:
+    - The bridge state topic MUST be monitored.
+    - If Zigbee2MQTT stops publishing bridge/device state or reports offline, create a provider-level issue.
+    - The UI SHOULD distinguish provider outage from individual device outage.
+    - Future diagnostics may parse user-provided Zigbee2MQTT/Home Assistant add-on logs when USB stick
+      connection failures occur.
+
+x-home-assistant:
+  baseUrlExample: "https://home-assistant.localdomain.bnowakowski.pl:8123"
+  auth: Long-lived access token
+  tokenGeneration:
+    - In Home Assistant, open the user profile page.
+    - Scroll to "Long-lived access tokens".
+    - Create a token for this watchdog application.
+    - Store it in `WATCHDOG_HOME_ASSISTANT_TOKEN` in local/deployment environment, not in git.
+  tlsOptions:
+    - Prefer normal HTTPS certificate validation when the local domain certificate is trusted by the JVM.
+    - If local TLS validation fails, first import the issuing CA/certificate into a JVM truststore.
+    - A development-only insecure TLS mode may be added later, but it must be explicit and disabled by default.
+  initialApi:
+    - method: GET
+      path: /api/states
+      purpose: Discover/read entity states.
+    - method: GET
+      path: /api/states/{entity_id}
+      purpose: Read one entity state and attributes.
+    - method: POST
+      path: /api/services/{domain}/{service}
+      purpose: Apply selected configured fixes.
+  futureApi:
+    - Home Assistant WebSocket API for live events.
+  nonZigbeeUseCases:
+    - state checks for lights, switches, climate entities, sensors, and other integrations
+    - battery checks via battery sensor states or attributes
+    - safe service-call fixes for selected domains
+  identity:
+    initial: Home Assistant entity id
+    future: >
+      The implementation must remain extendable to richer provider identities, such as Home
+      Assistant device registry ids or direct Shelly provider ids.
+
+x-database:
+  engine: PostgreSQL
+  migrationTool: Flyway
+  migrationPath: src/main/resources/db/migration/
+  tables:
+    - name: device
+      description: Provider-neutral device inventory.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: provider_type
+          type: VARCHAR(40) NOT NULL
+        - name: provider_device_id
+          type: TEXT NOT NULL
+          description: IEEE address for Zigbee2MQTT, entity id/device id for Home Assistant.
+        - name: ieee_address
+          type: TEXT NULL
+        - name: network_address
+          type: TEXT NULL
+        - name: friendly_name
+          type: TEXT NOT NULL
+        - name: display_name
+          type: TEXT NOT NULL
+        - name: model_key
+          type: TEXT NOT NULL
+          description: >
+            Provider-specific model identity used to validate homogeneous groups. For
+            Zigbee2MQTT this should usually come from the discovered definition/model.
+            For Home Assistant it should come from device metadata when available, or a
+            configured model key for entity-only devices.
+        - name: model_name
+          type: TEXT NULL
+          description: Human-readable model/vendor name for UI display.
+        - name: power_source
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [MAINS, BATTERY, UNKNOWN]
+        - name: criticality
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [NORMAL, IMPORTANT, CRITICAL]
+        - name: enabled
+          type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: provider_metadata
+          type: JSONB NOT NULL DEFAULT '{}'::jsonb
+        - name: last_seen_at
+          type: TIMESTAMPTZ NULL
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+        - name: updated_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+      constraints:
+        - UNIQUE(provider_type, provider_device_id)
+    - name: device_group
+      description: User-defined group of similar devices. Rules are configured at this level.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: name
+          type: TEXT NOT NULL UNIQUE
+        - name: description
+          type: TEXT NULL
+        - name: provider_type
+          type: VARCHAR(40) NULL
+          description: >
+            Provider type locked by the first device in the group. Empty groups may have this
+            unset until their first member is added.
+        - name: model_key
+          type: TEXT NULL
+          description: >
+            Model key locked by the first device in the group. All later members must have the
+            same provider type and model key.
+        - name: priority
+          type: INTEGER NOT NULL DEFAULT 0
+          description: Higher priority wins when groups define conflicting rules.
+        - name: enabled
+          type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: notification_defaults
+          type: JSONB NOT NULL DEFAULT '{}'::jsonb
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+        - name: updated_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+    - name: device_group_membership
+      description: Many-to-many relation between devices and groups.
+      columns:
+        - name: device_id
+          type: BIGINT NOT NULL REFERENCES device(id)
+        - name: group_id
+          type: BIGINT NOT NULL REFERENCES device_group(id)
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+      constraints:
+        - PRIMARY KEY(device_id, group_id)
+    - name: device_group_rule
+      description: Desired-state, health, battery, and notification rules attached to groups.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: group_id
+          type: BIGINT NOT NULL REFERENCES device_group(id)
+        - name: provider_type
+          type: VARCHAR(40) NULL
+          description: Null means provider-neutral rule if supported by the checker.
+        - name: rule_type
+          type: VARCHAR(40) NOT NULL
+          allowedValues: [DESIRED_PROPERTY, BATTERY_THRESHOLD, AVAILABILITY, FRESHNESS]
+        - name: property_path
+          type: TEXT NULL
+        - name: endpoint
+          type: TEXT NULL
+        - name: comparison_operator
+          type: VARCHAR(40) NOT NULL
+          allowedValues: [EQUALS, NOT_EQUALS, GREATER_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN, LESS_THAN_OR_EQUAL]
+        - name: desired_value
+          type: JSONB NULL
+        - name: check_mode
+          type: VARCHAR(40) NOT NULL
+          allowedValues: [OBSERVE_ONLY, AUTO_FIX]
+        - name: severity
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [INFO, WARNING, CRITICAL]
+        - name: notify_on_mismatch
+          type: BOOLEAN NOT NULL DEFAULT FALSE
+        - name: notify_on_fix_success
+          type: BOOLEAN NOT NULL DEFAULT FALSE
+        - name: notify_on_fix_failure
+          type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: cooldown_seconds
+          type: INTEGER NOT NULL DEFAULT 3600
+        - name: enabled
+          type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+        - name: updated_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+    - name: check_run
+      description: One scheduled or manual monitoring pass.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: trigger_type
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [SCHEDULED, MANUAL, STARTUP]
+        - name: status
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [RUNNING, COMPLETED, FAILED]
+        - name: started_at
+          type: TIMESTAMPTZ NOT NULL
+        - name: finished_at
+          type: TIMESTAMPTZ NULL
+        - name: summary
+          type: JSONB NOT NULL DEFAULT '{}'::jsonb
+    - name: device_check_result
+      description: Per-device result within a check run.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: check_run_id
+          type: BIGINT NOT NULL REFERENCES check_run(id)
+        - name: device_id
+          type: BIGINT NOT NULL REFERENCES device(id)
+        - name: status
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [HEALTHY, DEGRADED, OFFLINE, UNKNOWN]
+        - name: snapshot
+          type: JSONB NOT NULL DEFAULT '{}'::jsonb
+        - name: checked_at
+          type: TIMESTAMPTZ NOT NULL
+    - name: rule_check_result
+      description: Result of evaluating one effective rule against one device.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: device_check_result_id
+          type: BIGINT NOT NULL REFERENCES device_check_result(id)
+        - name: rule_id
+          type: BIGINT NOT NULL REFERENCES device_group_rule(id)
+        - name: status
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [MATCH, MISMATCH, SKIPPED, ERROR]
+        - name: actual_value
+          type: JSONB NULL
+        - name: expected_value
+          type: JSONB NULL
+        - name: message
+          type: TEXT NULL
+    - name: fix_attempt
+      description: Auto-fix attempt created from a mismatched rule.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: rule_check_result_id
+          type: BIGINT NOT NULL REFERENCES rule_check_result(id)
+        - name: status
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [REQUESTED, CONFIRMED, FAILED, TIMED_OUT, SKIPPED]
+        - name: requested_value
+          type: JSONB NULL
+        - name: provider_response
+          type: JSONB NULL
+        - name: requested_at
+          type: TIMESTAMPTZ NOT NULL
+        - name: confirmed_at
+          type: TIMESTAMPTZ NULL
+    - name: device_parameter_history
+      description: >
+        Change-oriented history of device parameters used by checks. This table stores checked
+        property values for debugging without persisting every complete device snapshot on every
+        run.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: device_id
+          type: BIGINT NOT NULL REFERENCES device(id)
+        - name: rule_id
+          type: BIGINT NULL REFERENCES device_group_rule(id)
+          description: Rule that caused this property to be tracked, when applicable.
+        - name: provider_type
+          type: VARCHAR(40) NOT NULL
+        - name: property_path
+          type: TEXT NOT NULL
+        - name: endpoint
+          type: TEXT NULL
+        - name: value_json
+          type: JSONB NULL
+          description: Exact compact JSON value observed for this property.
+        - name: value_text
+          type: TEXT NULL
+          description: Optional projected text value for efficient display/filtering.
+        - name: value_number
+          type: DOUBLE PRECISION NULL
+          description: Optional projected numeric value for charts and thresholds.
+        - name: value_boolean
+          type: BOOLEAN NULL
+          description: Optional projected boolean value for filtering.
+        - name: previous_value_json
+          type: JSONB NULL
+          description: Previous value when this row represents a change.
+        - name: changed
+          type: BOOLEAN NOT NULL
+          description: True when the value differs from the latest stored value.
+        - name: source
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [CHECK, MQTT_EVENT, HA_EVENT, MANUAL]
+        - name: observed_at
+          type: TIMESTAMPTZ NOT NULL
+        - name: check_run_id
+          type: BIGINT NULL REFERENCES check_run(id)
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+      indexes:
+        - name: device_parameter_history_latest_idx
+          columns: [device_id, provider_type, property_path, endpoint, observed_at DESC]
+          purpose: Find latest value for a tracked property.
+        - name: device_parameter_history_changes_idx
+          columns: [device_id, property_path, changed, observed_at DESC]
+          purpose: Inspect changes for debugging.
+        - name: device_parameter_history_observed_at_idx
+          columns: [observed_at]
+          purpose: Retention cleanup.
+    - name: notification_channel
+      description: Deployment-level notification channel configuration. Pushover is the first channel.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: channel_type
+          type: VARCHAR(40) NOT NULL
+          allowedValues: [PUSHOVER]
+        - name: name
+          type: TEXT NOT NULL
+        - name: enabled
+          type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: configuration
+          type: JSONB NOT NULL DEFAULT '{}'::jsonb
+          description: >
+            Deployment-level channel configuration such as Pushover base URL and app token
+            metadata. Per-user Pushover user keys must not be stored here.
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+        - name: updated_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+    - name: notification_event
+      description: Sent, skipped, or failed notification event with dedupe metadata.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: channel_id
+          type: BIGINT NOT NULL REFERENCES notification_channel(id)
+        - name: device_id
+          type: BIGINT NULL REFERENCES device(id)
+        - name: rule_id
+          type: BIGINT NULL REFERENCES device_group_rule(id)
+        - name: dedupe_key
+          type: TEXT NOT NULL
+        - name: status
+          type: VARCHAR(20) NOT NULL
+          allowedValues: [SENT, SKIPPED_COOLDOWN, FAILED]
+        - name: severity
+          type: VARCHAR(20) NOT NULL
+        - name: message
+          type: TEXT NOT NULL
+        - name: provider_response
+          type: JSONB NULL
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+
+x-business-rules:
+  groups:
+    - Devices MAY belong to multiple groups.
+    - Every non-empty group MUST contain devices of exactly one provider type and one model key.
+    - Adding a device to a group MUST fail validation when its provider type or model key differs
+      from the group's locked provider type/model key.
+    - The first device added to an empty group locks that group's provider type and model key.
+    - Removing the last device from a group MAY leave the provider type/model key locked so rules
+      remain valid; the UI may provide an explicit reset action for empty groups.
+    - Rules are configured on groups, not directly on devices in the initial version.
+    - Because a group is model-homogeneous, the rule editor SHOULD derive selectable attributes
+      from any current group member.
+    - A rule created from one member's attributes is expected to apply to all devices in the group.
+    - If a provider reports slightly different metadata for devices with the same model key, the UI
+      SHOULD show only common attributes by default and allow an advanced manual property path.
+    - If two groups define the same effective provider/property path for one device, this is a
+      configuration error. The conflicting rule MUST be skipped until the user removes the rule
+      from one group. The UI MUST explain which groups conflict.
+    - The UI MUST show effective rules for each device so inherited behavior is inspectable.
+    - Per-device overrides are allowed as a future extension but are not required for v1.
+  authentication:
+    - Vaadin UI uses server-side Google OIDC login/session handling equivalent to CoZaDzban.
+    - OAuth access tokens and ID tokens MUST NOT be exposed to frontend JavaScript.
+    - Start with ADMIN users, but keep USER/ADMIN role support in the model for later role behavior.
+    - Secrets should follow the CoZaDzban pattern: deployment credentials come from environment
+      variables first; encrypted database storage can be used later for user-managed secrets.
+  checks:
+    - All enabled devices are checked on a periodic schedule.
+    - A manual check can be started from the UI.
+    - Device snapshots are read through the matching provider.
+    - Battery devices MUST NOT be treated as failed only because they do not immediately respond.
+    - AC/mains-powered devices default to stale after 2 hours without a useful message.
+    - Battery-powered devices default to stale after 24 hours without a useful message.
+    - Critical devices default to stale after 1 hour unless a more specific device/group rule overrides it.
+    - Home Assistant entities with state `unavailable` MUST be treated as unavailable.
+    - Zigbee provider health MUST be checked separately from device health.
+    - Active reads/checks are allowed and should be preferred where the provider can do them safely.
+  comparisons:
+    supportedTypes:
+      - STRING_ENUM
+      - NUMBER_THRESHOLD
+      - BOOLEAN
+      - JSON_EQUALITY
+    missingValueBehavior: >
+      If a checked property is missing from the provider snapshot, the checker MUST retry active
+      reads a configurable number of times. If the property is still missing after retries, the
+      rule result is an incorrect/error state, not a skipped/healthy state.
+  fixing:
+    - Auto-fix only runs for rules with `check_mode = AUTO_FIX`.
+    - Auto-fix must be skipped when the property is not writable unless the rule was manually configured to allow it.
+    - Every fix attempt is recorded.
+    - Fix confirmation should be based on a later provider snapshot/state update where practical.
+    - Fix values are user-defined; there are no implicit automatic fixes.
+    - Fixing MUST support retries. Retry count, retry delay, and stop-after behavior should be configurable per rule.
+  parameterHistory:
+    - The system MUST store history for parameters that are evaluated by effective rules.
+    - The default storage mode MUST write a history row only when a tracked value changes.
+    - The latest observed value MUST remain easy to query for each device/property.
+    - Full device snapshots MAY be stored in check results for recent debugging, but long-term
+      history should be property-oriented and compact.
+    - Unchanged sample rows MAY be enabled per deployment for debugging, but should be off by
+      default or sampled at a low rate.
+    - Numeric values SHOULD be projected into `value_number` when possible so battery and sensor
+      history can be charted without repeatedly parsing JSON.
+    - History retention MUST be configurable.
+    - The default detailed history retention SHOULD be 12 months.
+    - Critical device longer retention should be supported by the model/configuration later, but does
+      not need to be implemented in v1.
+    - Numeric values such as battery history SHOULD be rolled up daily for long-term trend inspection.
+  notifications:
+    - Notifications are opt-in per rule/problem type.
+    - Pushover app token is deployment-level configuration.
+    - Pushover user keys are configured per logged-in user in the Vaadin UI, encrypted at rest,
+      and never exposed back to the browser after saving.
+    - Cooldowns MUST prevent repeated alerts for the same device/rule/problem.
+    - Default notification cooldown SHOULD be 24 hours.
+    - Recovery notifications SHOULD be enabled by default when a device/rule returns to healthy.
+    - Critical thermostat offline/stale/battery issues should support high-priority Pushover messages.
+  exampleGroups:
+    - name: Wall switches - decoupled relay
+      rules:
+        - provider_type: ZIGBEE2MQTT
+          property_path: operation_mode_left
+          desired_value: '"decoupled"'
+        - provider_type: ZIGBEE2MQTT
+          property_path: operation_mode_right
+          desired_value: '"decoupled"'
+    - name: Switches that must stay powered
+      rules:
+        - provider_type: ZIGBEE2MQTT
+          property_path: state_left
+          desired_value: '"ON"'
+        - provider_type: ZIGBEE2MQTT
+          property_path: state_right
+          desired_value: '"ON"'
+    - name: Critical thermostats
+      rules:
+        - rule_type: AVAILABILITY
+          comparison_operator: EQUALS
+          desired_value: '"online"'
+          notify_on_mismatch: true
+          severity: CRITICAL
+        - rule_type: BATTERY_THRESHOLD
+          comparison_operator: GREATER_THAN_OR_EQUAL
+          desired_value: "25"
+          notify_on_mismatch: true
+          severity: CRITICAL
+
+x-ui:
+  routes:
+    - route: /
+      name: Dashboard
+      requirements:
+        - Show healthy/degraded/offline totals.
+        - Show critical issues first.
+        - Show last check status and started/finished times.
+        - Provide manual "Run check now" action.
+    - route: /devices
+      name: Devices
+      requirements:
+        - List devices with provider, display name, external id, power source, criticality, battery, availability, and last seen.
+        - Allow enabling/disabling monitoring.
+        - Allow editing display name, power source, and criticality.
+    - route: /devices/:id
+      name: Device Detail
+      requirements:
+        - Show latest provider snapshot.
+        - Show group memberships.
+        - Show effective rules.
+        - Show recent check results, fix attempts, and notifications.
+        - Show parameter history for properties evaluated by effective rules.
+        - Prefer compact tables/charts over raw full snapshots for long-term debugging.
+    - route: /groups
+      name: Groups
+      requirements:
+        - Create/edit/delete groups.
+        - Assign/remove devices.
+        - Validate that all members of a group have the same provider type and model key.
+        - Show the locked provider/model for each non-empty group.
+        - Set group priority.
+        - Configure group rules.
+    - route: /checks
+      name: Checks
+      requirements:
+        - List check runs and drill into per-device/rule results.
+    - route: /notifications
+      name: Notifications
+      requirements:
+        - Configure per-user Pushover user key and optional Pushover device targets.
+        - Save Pushover user keys encrypted at rest and show only a suffix/summary after saving.
+        - Send test notification.
+        - Show notification history.
+    - route: /settings
+      name: Settings
+      requirements:
+        - Configure scheduler interval.
+        - Configure MQTT connection.
+        - Configure Home Assistant connection.
+  ruleEditor:
+    requirements:
+      - For a non-empty group, load selectable rule attributes from any member device because all
+        devices in the group have the same model.
+      - Prefer common provider-reported attributes for the group's model.
+      - Show model/vendor information beside the group name so the user can spot accidental grouping.
+      - Keep an advanced manual property path option for provider metadata gaps.
+
+x-configuration:
+  environment:
+    - name: POSTGRES_DB
+      required: true
+    - name: POSTGRES_USER
+      required: true
+    - name: POSTGRES_PASSWORD
+      required: true
+    - name: POSTGRES_PORT
+      required: false
+      default: "5433"
+    - name: APP_PORT
+      required: false
+      default: "8080"
+    - name: WATCHDOG_MQTT_ENABLED
+      required: false
+      default: "true"
+    - name: WATCHDOG_MQTT_BROKER_URI
+      required: true
+      example: "tcp://core-mosquitto:1883"
+    - name: WATCHDOG_MQTT_USERNAME
+      required: false
+      example: addons
+    - name: WATCHDOG_MQTT_PASSWORD
+      required: false
+    - name: WATCHDOG_ZIGBEE2MQTT_BASE_TOPIC
+      required: false
+      default: zigbee2mqtt-2
+    - name: WATCHDOG_HOME_ASSISTANT_ENABLED
+      required: false
+      default: "false"
+    - name: WATCHDOG_HOME_ASSISTANT_BASE_URL
+      required: false
+      example: "https://home-assistant.localdomain.bnowakowski.pl:8123"
+    - name: WATCHDOG_HOME_ASSISTANT_TOKEN
+      required: false
+    - name: WATCHDOG_PUSHOVER_ENABLED
+      required: false
+      default: "false"
+    - name: WATCHDOG_PUSHOVER_APP_TOKEN
+      required: false
+    - name: WATCHDOG_PARAMETER_HISTORY_RETENTION_DAYS
+      required: false
+      default: "365"
+    - name: WATCHDOG_PARAMETER_HISTORY_RECORD_UNCHANGED
+      required: false
+      default: "false"
+    - name: WATCHDOG_PARAMETER_HISTORY_UNCHANGED_SAMPLE_SECONDS
+      required: false
+      default: "86400"
+    - name: WATCHDOG_NOTIFICATION_DEFAULT_COOLDOWN_SECONDS
+      required: false
+      default: "86400"
+    - name: WATCHDOG_FIX_DEFAULT_RETRY_COUNT
+      required: false
+      default: "3"
+    - name: WATCHDOG_FIX_DEFAULT_RETRY_DELAY_SECONDS
+      required: false
+      default: "60"
+    - name: WATCHDOG_MISSING_PROPERTY_RETRY_COUNT
+      required: false
+      default: "3"
+    - name: WATCHDOG_MISSING_PROPERTY_RETRY_DELAY_SECONDS
+      required: false
+      default: "10"
+    - name: WATCHDOG_STALE_MAINS_SECONDS
+      required: false
+      default: "7200"
+    - name: WATCHDOG_STALE_BATTERY_SECONDS
+      required: false
+      default: "86400"
+    - name: WATCHDOG_STALE_CRITICAL_SECONDS
+      required: false
+      default: "3600"
+
+x-testing:
+  requiredCommand: make test
+  focus:
+    - Flyway migrations
+    - Spring Data JDBC repositories
+    - group effective rule resolution
+    - provider abstraction behavior
+    - Zigbee2MQTT MQTT parsing and publishing with mocked client
+    - Home Assistant API behavior with mocked HTTP client
+    - notification cooldown and dedupe
+    - scheduled check persistence
+    - parameter history change detection
+    - parameter history retention cleanup

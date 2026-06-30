@@ -1,0 +1,150 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Copyright (C) 2026 https://bnowakowski.pl
+
+package pl.bnowakowski.watchdog.provider.zigbee2mqtt
+
+import java.nio.charset.StandardCharsets
+import java.util.concurrent.CopyOnWriteArrayList
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
+import org.eclipse.paho.client.mqttv3.MqttAsyncClient
+import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
+import org.eclipse.paho.client.mqttv3.MqttConnectOptions
+import org.eclipse.paho.client.mqttv3.MqttMessage
+import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence
+import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.SmartLifecycle
+import org.springframework.stereotype.Component
+
+@Component
+@ConditionalOnProperty(prefix = "watchdog.mqtt", name = ["enabled"], havingValue = "true", matchIfMissing = true)
+class PahoMqttGateway(
+	private val properties: MqttProperties,
+) : MqttGateway, SmartLifecycle {
+	private val logger = LoggerFactory.getLogger(javaClass)
+	private val subscriptions = CopyOnWriteArrayList<Subscription>()
+	private val client = MqttAsyncClient(
+		properties.brokerUri,
+		properties.clientId,
+		MemoryPersistence(),
+	)
+	@Volatile
+	private var running = false
+
+	override fun start() {
+		if (running) {
+			return
+		}
+
+		client.setCallback(object : MqttCallbackExtended {
+			override fun connectComplete(reconnect: Boolean, serverURI: String?) {
+				logger.info("Connected to MQTT broker {} reconnect={}", serverURI, reconnect)
+				resubscribe()
+			}
+
+			override fun connectionLost(cause: Throwable?) {
+				logger.warn("MQTT connection lost: {}", cause?.message ?: "unknown")
+			}
+
+			override fun messageArrived(topic: String, message: MqttMessage) {
+				subscriptions
+					.filter { mqttTopicMatches(it.topicFilter, topic) }
+					.forEach { it.handler.handle(topic, message.payload) }
+			}
+
+			override fun deliveryComplete(token: IMqttDeliveryToken?) = Unit
+		})
+
+		runCatching {
+			client.connect(connectOptions()).waitForCompletion()
+			running = true
+		}.onFailure {
+			logger.warn("Could not connect to MQTT broker {}: {}", properties.brokerUri, it.message)
+			running = false
+		}
+	}
+
+	override fun stop() {
+		if (!running) {
+			return
+		}
+		runCatching {
+			client.disconnect().waitForCompletion()
+		}
+		running = false
+	}
+
+	override fun isRunning(): Boolean = running
+
+	override fun subscribe(topicFilter: String, handler: MqttMessageHandler) {
+		subscriptions += Subscription(topicFilter, handler)
+		if (client.isConnected) {
+			client.subscribe(topicFilter, 0)
+		}
+	}
+
+	override fun publish(topic: String, payload: ByteArray) {
+		if (!client.isConnected) {
+			throw MqttGatewayUnavailableException("MQTT client is not connected")
+		}
+		client.publish(topic, payload, 0, false)
+		logger.debug("Published MQTT message to {}: {}", topic, payload.toString(StandardCharsets.UTF_8))
+	}
+
+	private fun resubscribe() {
+		subscriptions.forEach { subscription ->
+			runCatching {
+				client.subscribe(subscription.topicFilter, 0)
+			}.onFailure {
+				logger.warn("Could not subscribe to {}: {}", subscription.topicFilter, it.message)
+			}
+		}
+	}
+
+	private fun connectOptions(): MqttConnectOptions =
+		MqttConnectOptions().also {
+			it.isAutomaticReconnect = true
+			it.isCleanSession = true
+			it.connectionTimeout = properties.connectionTimeoutSeconds
+			it.keepAliveInterval = properties.keepAliveSeconds
+			if (properties.username.isNotBlank()) {
+				it.userName = properties.username
+			}
+			if (properties.password.isNotBlank()) {
+				it.password = properties.password.toCharArray()
+			}
+		}
+
+	private data class Subscription(
+		val topicFilter: String,
+		val handler: MqttMessageHandler,
+	)
+}
+
+class MqttGatewayUnavailableException(message: String) : RuntimeException(message)
+
+private fun mqttTopicMatches(filter: String, topic: String): Boolean {
+	val filterParts = filter.split('/')
+	val topicParts = topic.split('/')
+	var topicIndex = 0
+
+	for (filterPart in filterParts) {
+		when (filterPart) {
+			"#" -> return true
+			"+" -> {
+				if (topicIndex >= topicParts.size) {
+					return false
+				}
+				topicIndex += 1
+			}
+			else -> {
+				if (topicIndex >= topicParts.size || filterPart != topicParts[topicIndex]) {
+					return false
+				}
+				topicIndex += 1
+			}
+		}
+	}
+
+	return topicIndex == topicParts.size
+}
