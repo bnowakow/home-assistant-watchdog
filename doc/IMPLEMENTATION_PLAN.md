@@ -166,7 +166,7 @@ Assistant entities and future APIs can be added without redesigning rules.
 49. Add configurable retention:
     - detailed change history retention, default 12 months
     - optional unchanged sample retention, default disabled
-    - optional daily rollup for numeric values such as battery level
+    - optional future daily rollup for numeric values such as battery level
 50. Prepare the model/configuration for longer critical-device retention later, but do not implement
     differentiated retention in v1.
 51. Add UI history charts/tables on the device detail page for parameters used by rules.
@@ -222,6 +222,8 @@ Assistant entities and future APIs can be added without redesigning rules.
    - manual run button
 53. Devices view:
    - list provider, name, external id, power source, availability, battery, last seen
+   - import discovered devices from provider integrations and skip existing provider identities
+   - create manually registered devices with provider identity and model metadata
    - enable/disable monitoring
    - edit criticality
 54. Device detail:

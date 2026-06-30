@@ -6,22 +6,32 @@ import com.vaadin.flow.component.html.H3
 import com.vaadin.flow.component.html.Pre
 import com.vaadin.flow.component.html.Span
 import com.vaadin.flow.component.orderedlayout.VerticalLayout
-import com.vaadin.flow.router.BeforeEvent
-import com.vaadin.flow.router.HasUrlParameter
+import com.vaadin.flow.router.BeforeEnterEvent
+import com.vaadin.flow.router.BeforeEnterObserver
 import com.vaadin.flow.router.Route
 import jakarta.annotation.security.PermitAll
 import org.springframework.data.repository.findByIdOrNull
 import pl.bnowakowski.watchdog.persistence.DeviceRepository
 import pl.bnowakowski.watchdog.rules.EffectiveRuleResolver
 
-@Route("devices", layout = MainLayout::class)
+@Route("devices/:deviceId", layout = MainLayout::class)
 @PermitAll
 class DeviceDetailView(
 	private val deviceRepository: DeviceRepository,
 	private val effectiveRuleResolver: EffectiveRuleResolver,
 	private val uiQueries: UiQueries,
-) : VerticalLayout(), HasUrlParameter<Long> {
-	override fun setParameter(event: BeforeEvent, parameter: Long) {
+) : VerticalLayout(), BeforeEnterObserver {
+	override fun beforeEnter(event: BeforeEnterEvent) {
+		val parameter = event.routeParameters.get("deviceId").orElse(null)?.toLongOrNull()
+		if (parameter == null) {
+			removeAll()
+			add(H2("Device not found"))
+			return
+		}
+		showDevice(parameter)
+	}
+
+	private fun showDevice(parameter: Long) {
 		removeAll()
 		val device = deviceRepository.findByIdOrNull(parameter)
 		if (device == null) {

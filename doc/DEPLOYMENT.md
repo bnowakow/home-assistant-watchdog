@@ -38,6 +38,7 @@ Use this stage before enabling any writes.
    WATCHDOG_HOME_ASSISTANT_ENABLED=true
    WATCHDOG_HOME_ASSISTANT_BASE_URL=https://home-assistant.localdomain.bnowakowski.pl:8123
    WATCHDOG_HOME_ASSISTANT_TOKEN=...
+   WATCHDOG_HOME_ASSISTANT_SKIP_CERTIFICATE_CHECKS=false
    ```
 3. Create groups and rules with `check_mode = OBSERVE_ONLY`.
 4. Run several checks from the UI or wait for `WATCHDOG_CHECK_INTERVAL_SECONDS`.

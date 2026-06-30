@@ -109,6 +109,40 @@ class HomeAssistantDeviceProviderTest {
 	}
 
 	@Test
+	fun `calls configured custom Home Assistant service for matching property`() {
+		val customProvider = HomeAssistantDeviceProvider(
+			properties = HomeAssistantProperties(
+				enabled = true,
+				token = "token",
+				serviceCalls = listOf(
+					HomeAssistantServiceCallMapping(
+						propertyPath = "state",
+						entityId = "climate.bedroom",
+						desiredValue = "heat",
+						domain = "climate",
+						service = "set_hvac_mode",
+					),
+				),
+			),
+			client = client,
+			objectMapper = objectMapper,
+			clock = clock,
+		)
+
+		val result = customProvider.applyDesiredState(
+			device = device("climate.bedroom"),
+			property = DevicePropertyRef(ProviderType.HOME_ASSISTANT, "state"),
+			desiredValue = objectMapper.readTree(""""heat""""),
+		)
+
+		assertEquals(ProviderFixStatus.REQUESTED, result.status)
+		assertEquals("climate", client.serviceCalls.single().domain)
+		assertEquals("set_hvac_mode", client.serviceCalls.single().service)
+		assertEquals("climate.bedroom", client.serviceCalls.single().payload.path("entity_id").asText())
+		assertEquals("heat", client.serviceCalls.single().payload.path("value").asText())
+	}
+
+	@Test
 	fun `returns no data when provider is disabled or token is missing`() {
 		val disabledProvider = HomeAssistantDeviceProvider(
 			properties = HomeAssistantProperties(enabled = false, token = ""),

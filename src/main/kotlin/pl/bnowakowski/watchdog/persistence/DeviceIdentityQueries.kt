@@ -22,7 +22,7 @@ class DeviceIdentityQueries(
 			FROM device
 			WHERE provider_type = :providerType
 				AND provider_device_id = :providerDeviceId
-				AND (:excludingDeviceId IS NULL OR id <> :excludingDeviceId)
+				AND id <> COALESCE(:excludingDeviceId, -1)
 			LIMIT 1
 			""".trimIndent(),
 			mapOf(
@@ -42,7 +42,7 @@ class DeviceIdentityQueries(
 			FROM device
 			WHERE provider_type = :providerType
 				AND ieee_address = :ieeeAddress
-				AND (:excludingDeviceId IS NULL OR id <> :excludingDeviceId)
+				AND id <> COALESCE(:excludingDeviceId, -1)
 			LIMIT 1
 			""".trimIndent(),
 			mapOf(

@@ -200,11 +200,12 @@ x-home-assistant:
     - In Home Assistant, open the user profile page.
     - Scroll to "Long-lived access tokens".
     - Create a token for this watchdog application.
-    - Store it in `WATCHDOG_HOME_ASSISTANT_TOKEN` in local/deployment environment, not in git.
+    - "Store it in `WATCHDOG_HOME_ASSISTANT_TOKEN` in local/deployment environment, not in git."
   tlsOptions:
     - Prefer normal HTTPS certificate validation when the local domain certificate is trusted by the JVM.
     - If local TLS validation fails, first import the issuing CA/certificate into a JVM truststore.
-    - A development-only insecure TLS mode may be added later, but it must be explicit and disabled by default.
+    - "`WATCHDOG_HOME_ASSISTANT_SKIP_CERTIFICATE_CHECKS=true` MAY be used as an explicit local-only escape hatch."
+    - Certificate checks MUST remain enabled by default.
   initialApi:
     - method: GET
       path: /api/states
@@ -556,8 +557,8 @@ x-business-rules:
     - Vaadin UI uses server-side Google OIDC login/session handling equivalent to CoZaDzban.
     - OAuth access tokens and ID tokens MUST NOT be exposed to frontend JavaScript.
     - Start with ADMIN users, but keep USER/ADMIN role support in the model for later role behavior.
-    - Secrets should follow the CoZaDzban pattern: deployment credentials come from environment
-      variables first; encrypted database storage can be used later for user-managed secrets.
+    - "Secrets should follow the CoZaDzban pattern: deployment credentials come from environment
+      variables first; encrypted database storage can be used later for user-managed secrets."
   checks:
     - All enabled devices are checked on a periodic schedule.
     - A manual check can be started from the UI.
@@ -598,9 +599,9 @@ x-business-rules:
       history can be charted without repeatedly parsing JSON.
     - History retention MUST be configurable.
     - The default detailed history retention SHOULD be 12 months.
-    - Critical device longer retention should be supported by the model/configuration later, but does
-      not need to be implemented in v1.
-    - Numeric values such as battery history SHOULD be rolled up daily for long-term trend inspection.
+    - Critical device longer retention is a future extension and is not required for v1.
+    - Numeric daily rollups such as battery-history trends are a future extension and are not required
+      for v1.
   notifications:
     - Notifications are opt-in per rule/problem type.
     - Pushover app token is deployment-level configuration.
@@ -653,6 +654,8 @@ x-ui:
       name: Devices
       requirements:
         - List devices with provider, display name, external id, power source, criticality, battery, availability, and last seen.
+        - Allow importing discovered devices from all registered providers or one selected provider, skipping already registered provider identities.
+        - Allow creating manually registered devices with provider identity, optional Zigbee IEEE address, model key/name, power source, criticality, and monitoring state.
         - Allow enabling/disabling monitoring.
         - Allow editing display name, power source, and criticality.
     - route: /devices/:id
@@ -687,9 +690,11 @@ x-ui:
     - route: /settings
       name: Settings
       requirements:
-        - Configure scheduler interval.
-        - Configure MQTT connection.
-        - Configure Home Assistant connection.
+        - Show effective scheduler configuration.
+        - Show effective notification configuration.
+        - Show provider configuration status for MQTT and Home Assistant.
+        - Runtime configuration is deployment/environment driven in v1; editable persisted runtime
+          settings are a future extension.
   ruleEditor:
     requirements:
       - For a non-empty group, load selectable rule attributes from any member device because all
@@ -734,6 +739,9 @@ x-configuration:
       example: "https://home-assistant.localdomain.bnowakowski.pl:8123"
     - name: WATCHDOG_HOME_ASSISTANT_TOKEN
       required: false
+    - name: WATCHDOG_HOME_ASSISTANT_SKIP_CERTIFICATE_CHECKS
+      required: false
+      default: "false"
     - name: WATCHDOG_PUSHOVER_ENABLED
       required: false
       default: "false"

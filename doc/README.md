@@ -19,12 +19,23 @@ Project documentation, specifications, and implementation plans.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - phase-14 runbook for laptop verification, observe-only
   provider checks, limited auto-fix rollout, Pushover enablement, history review, and server
   deployment.
+- Devices can be bulk-imported in the application from **Devices** using **Import discovered
+  devices**. Leave the provider empty to import from all registered providers, or choose a single
+  provider such as Zigbee2MQTT or Home Assistant. Existing devices with the same provider/external
+  id are skipped.
+- Devices can be manually registered in the application from **Devices**. Choose the provider,
+  enter the external provider id, provide model metadata, and set power source/criticality.
+  Zigbee2MQTT devices require an IEEE address; when left blank, the UI uses the external id as
+  the IEEE address. After creating a device, assign it to a homogeneous group from **Groups** and
+  configure rules on that group.
 - Home Assistant integration uses the REST API when `WATCHDOG_HOME_ASSISTANT_ENABLED=true`.
   Create a token in Home Assistant from the user profile page under **Long-lived access tokens**,
   name it for this watchdog app, and store it only in local/deployment environment as
   `WATCHDOG_HOME_ASSISTANT_TOKEN`. Prefer a JVM-trusted HTTPS certificate for
   `WATCHDOG_HOME_ASSISTANT_BASE_URL`; if a local certificate is not trusted, import the issuing
-  CA/certificate into the JVM truststore before considering any development-only insecure TLS mode.
+  CA/certificate into the JVM truststore. As a local escape hatch, set
+  `WATCHDOG_HOME_ASSISTANT_SKIP_CERTIFICATE_CHECKS=true` to skip Home Assistant certificate
+  validation; keep it disabled outside trusted local networks.
 - `make docker-pg-backup` dumps the Compose PostgreSQL database into
   `docker-data/backup/postgres/`.
 - `make install-pg-backup-cron` installs a daily database backup cron job for the current user.

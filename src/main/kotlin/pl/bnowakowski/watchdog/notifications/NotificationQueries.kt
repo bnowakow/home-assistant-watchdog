@@ -19,6 +19,38 @@ class NotificationQueries(
 	private val jdbc: NamedParameterJdbcTemplate,
 	private val objectMapper: ObjectMapper,
 ) {
+	fun ensureAppUser(
+		email: String,
+		role: String = "ADMIN",
+	): Long =
+		requireNotNull(
+			jdbc.queryForObject(
+				"""
+				INSERT INTO app_user(email, role, status)
+				VALUES (:email, :role, 'ACTIVE')
+				ON CONFLICT (email) DO UPDATE
+				   SET status = 'ACTIVE',
+				       updated_at = now()
+				RETURNING id
+				""".trimIndent(),
+				mapOf("email" to email, "role" to role),
+				Long::class.java,
+			),
+		)
+
+	fun findPushoverPreference(appUserId: Long): NotificationPreference? =
+		jdbc.query(
+			"""
+			SELECT app_user_id, pushover_user_key_encrypted, pushover_user_key_suffix,
+			       pushover_device, notify_recovery_enabled, created_at, updated_at
+			FROM notification_preference
+			WHERE app_user_id = :appUserId
+				AND provider = 'PUSHOVER'
+			""".trimIndent(),
+			mapOf("appUserId" to appUserId),
+			PREFERENCE_ROW_MAPPER,
+		).firstOrNull()
+
 	fun upsertPushoverPreference(
 		appUserId: Long,
 		pushoverUserKeyEncrypted: String,

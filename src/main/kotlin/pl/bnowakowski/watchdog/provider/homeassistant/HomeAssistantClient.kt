@@ -3,9 +3,15 @@
 
 package pl.bnowakowski.watchdog.provider.homeassistant
 
+import java.net.http.HttpClient
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
 import tools.jackson.databind.JsonNode
@@ -30,12 +36,20 @@ class RestHomeAssistantClient(
 	private val properties: HomeAssistantProperties,
 	private val objectMapper: ObjectMapper,
 ) : HomeAssistantClient {
-	private val restClient: RestClient = RestClient.builder()
+	private val restClient: RestClient = restClientBuilder()
 		.baseUrl(properties.normalizedBaseUrl())
 		.defaultHeader(HttpHeaders.AUTHORIZATION, "Bearer ${properties.token.trim()}")
 		.defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
 		.defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
 		.build()
+
+	private fun restClientBuilder(): RestClient.Builder {
+		val builder = RestClient.builder()
+		if (properties.skipCertificateChecks) {
+			builder.requestFactory(JdkClientHttpRequestFactory(insecureHttpClient()))
+		}
+		return builder
+	}
 
 	override fun states(): List<HomeAssistantEntityState> =
 		restClient.get()
@@ -63,6 +77,26 @@ class RestHomeAssistantClient(
 			.retrieve()
 			.body(JsonNode::class.java)
 			?: objectMapper.createArrayNode()
+
+	private fun insecureHttpClient(): HttpClient =
+		HttpClient.newBuilder()
+			.sslContext(insecureSslContext())
+			.connectTimeout(properties.connectTimeout)
+			.build()
+
+	private fun insecureSslContext(): SSLContext =
+		SSLContext.getInstance("TLS").apply {
+			init(null, arrayOf(insecureTrustManager()), SecureRandom())
+		}
+
+	private fun insecureTrustManager(): X509TrustManager =
+		object : X509TrustManager {
+			override fun checkClientTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+
+			override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) = Unit
+
+			override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+		}
 }
 
 data class HomeAssistantStateResponse(

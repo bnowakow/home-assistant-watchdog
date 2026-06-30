@@ -1,6 +1,7 @@
 package pl.bnowakowski.watchdog.ui
 
 import com.vaadin.flow.component.button.Button
+import com.vaadin.flow.component.checkbox.Checkbox
 import com.vaadin.flow.component.combobox.ComboBox
 import com.vaadin.flow.component.grid.Grid
 import com.vaadin.flow.component.notification.Notification
@@ -13,12 +14,17 @@ import org.springframework.data.repository.findByIdOrNull
 import pl.bnowakowski.watchdog.domain.Criticality
 import pl.bnowakowski.watchdog.domain.Device
 import pl.bnowakowski.watchdog.domain.PowerSource
+import pl.bnowakowski.watchdog.domain.ProviderType
 import pl.bnowakowski.watchdog.persistence.DeviceRepository
+import pl.bnowakowski.watchdog.service.DeviceDiscoveryImportService
+import pl.bnowakowski.watchdog.service.DeviceInventoryService
 
 @Route("devices", layout = MainLayout::class)
 @PermitAll
 class DevicesView(
 	private val deviceRepository: DeviceRepository,
+	private val deviceDiscoveryImportService: DeviceDiscoveryImportService,
+	private val deviceInventoryService: DeviceInventoryService,
 	private val uiQueries: UiQueries,
 ) : VerticalLayout() {
 	private val grid = Grid(Device::class.java, false)
@@ -37,7 +43,7 @@ class DevicesView(
 		grid.addColumn { if (it.enabled) "Enabled" else "Disabled" }.setHeader("Monitoring")
 		grid.addComponentColumn { device ->
 			HorizontalLayout(
-				Button("Detail") { ui.ifPresent { it.navigate(DeviceDetailView::class.java, device.id) } },
+				Button("Detail") { ui.ifPresent { ui -> device.id?.let { ui.navigate("devices/$it") } } },
 				Button(if (device.enabled) "Disable" else "Enable") {
 					deviceRepository.save(device.copy(enabled = !device.enabled))
 					refresh()
@@ -46,9 +52,95 @@ class DevicesView(
 			)
 		}.setHeader("Actions").setAutoWidth(true)
 		grid.setSizeFull()
-		add(grid)
+		add(importDeviceEditor(), createDeviceEditor(), grid)
 		expand(grid)
 		refresh()
+	}
+
+	private fun importDeviceEditor(): HorizontalLayout {
+		val provider = ComboBox<ProviderType>("Import from").apply {
+			setItems(*ProviderType.entries.toTypedArray())
+			placeholder = "All providers"
+		}
+		val import = Button("Import discovered devices") {
+			runCatching {
+				deviceDiscoveryImportService.importDiscoveredDevices(provider.value)
+			}.onSuccess { report ->
+				Notification.show(
+					"Discovered ${report.discoveredCount}, imported ${report.importedCount}, " +
+						"skipped ${report.skippedExistingCount}, failed ${report.failedCount}",
+				)
+				refresh()
+			}.onFailure {
+				Notification.show("Could not import devices: ${it.message}")
+			}
+		}
+
+		return HorizontalLayout(provider, import)
+	}
+
+	private fun createDeviceEditor(): VerticalLayout {
+		val provider = ComboBox<ProviderType>("Provider").apply {
+			setItems(*ProviderType.entries.toTypedArray())
+			value = ProviderType.ZIGBEE2MQTT
+		}
+		val providerDeviceId = TextField("External ID")
+		val ieeeAddress = TextField("IEEE address")
+		val friendlyName = TextField("Friendly name")
+		val displayName = TextField("Display name")
+		val modelKey = TextField("Model key")
+		val modelName = TextField("Model name")
+		val power = ComboBox<PowerSource>("Power").apply {
+			setItems(*PowerSource.entries.toTypedArray())
+			value = PowerSource.UNKNOWN
+		}
+		val criticality = ComboBox<Criticality>("Criticality").apply {
+			setItems(*Criticality.entries.toTypedArray())
+			value = Criticality.NORMAL
+		}
+		val enabled = Checkbox("Enabled").apply { value = true }
+		val create = Button("Create device") {
+			val selectedProvider = provider.value ?: ProviderType.ZIGBEE2MQTT
+			val externalId = providerDeviceId.value.trim()
+			val fallbackName = displayName.value.trim()
+				.ifBlank { friendlyName.value.trim() }
+				.ifBlank { externalId }
+			val zigbeeIeeeAddress = ieeeAddress.value.trim()
+				.ifBlank { if (selectedProvider == ProviderType.ZIGBEE2MQTT) externalId else "" }
+			runCatching {
+				require(modelKey.value.trim().isNotBlank()) { "Model key is required" }
+				deviceInventoryService.save(
+					Device(
+						providerType = selectedProvider,
+						providerDeviceId = externalId,
+						ieeeAddress = zigbeeIeeeAddress.takeIf { it.isNotBlank() },
+						friendlyName = friendlyName.value.trim().ifBlank { fallbackName },
+						displayName = fallbackName,
+						modelKey = modelKey.value.trim(),
+						modelName = modelName.value.trim().takeIf { it.isNotBlank() },
+						powerSource = power.value ?: PowerSource.UNKNOWN,
+						criticality = criticality.value ?: Criticality.NORMAL,
+						enabled = enabled.value,
+					),
+				)
+			}.onSuccess {
+				listOf(providerDeviceId, ieeeAddress, friendlyName, displayName, modelKey, modelName).forEach(TextField::clear)
+				power.value = PowerSource.UNKNOWN
+				criticality.value = Criticality.NORMAL
+				enabled.value = true
+				Notification.show("Device created")
+				refresh()
+			}.onFailure {
+				Notification.show("Could not create device: ${it.message}")
+			}
+		}
+
+		return VerticalLayout(
+			HorizontalLayout(provider, providerDeviceId, ieeeAddress, friendlyName, displayName),
+			HorizontalLayout(modelKey, modelName, power, criticality, enabled, create),
+		).apply {
+			setWidthFull()
+		}
 	}
 
 	private fun openEditor(device: Device) {

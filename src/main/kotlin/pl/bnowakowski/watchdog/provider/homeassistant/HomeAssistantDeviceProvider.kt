@@ -132,6 +132,7 @@ class HomeAssistantDeviceProvider(
 		property: DevicePropertyRef,
 		desiredValue: JsonNode,
 	): HomeAssistantServiceCall? {
+		configuredServiceCall(entityId, property, desiredValue)?.let { return it }
 		if (property.providerType != ProviderType.HOME_ASSISTANT || property.propertyPath != "state") {
 			return null
 		}
@@ -149,6 +150,26 @@ class HomeAssistantDeviceProvider(
 			.put("entity_id", entityId)
 
 		return HomeAssistantServiceCall(domain, service, payload)
+	}
+
+	private fun configuredServiceCall(
+		entityId: String,
+		property: DevicePropertyRef,
+		desiredValue: JsonNode,
+	): HomeAssistantServiceCall? {
+		if (property.providerType != ProviderType.HOME_ASSISTANT) {
+			return null
+		}
+		val desiredText = desiredValue.asText("")
+		val mapping = properties.serviceCalls.firstOrNull {
+			it.propertyPath == property.propertyPath &&
+				(it.entityId == null || it.entityId == entityId) &&
+				(it.desiredValue == null || it.desiredValue == desiredText)
+		} ?: return null
+		val payload = objectMapper.createObjectNode()
+			.put("entity_id", entityId)
+			.set("value", desiredValue)
+		return HomeAssistantServiceCall(mapping.domain, mapping.service, payload)
 	}
 
 	private fun HomeAssistantEntityState.toPayload(): ObjectNode =

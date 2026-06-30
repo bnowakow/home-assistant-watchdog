@@ -17,6 +17,7 @@ import pl.bnowakowski.watchdog.provider.PropertyMetadata
 import pl.bnowakowski.watchdog.provider.ProviderFixStatus
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.node.ObjectNode
 
 @Component
 class Zigbee2MqttDeviceProvider(
@@ -33,14 +34,26 @@ class Zigbee2MqttDeviceProvider(
 
 	override fun readSnapshot(device: Device): DeviceSnapshot {
 		val state = stateCache.deviceStateByIeeeAddress(device.providerDeviceId)
+		val bridgeHealth = stateCache.bridgeHealth()
+		val payload = state?.payload
+			?.takeIf { it.isObject }
+			?.deepCopy()
+			?.let { it as? ObjectNode }
+			?: objectMapper.createObjectNode()
+		val providerHealth = objectMapper.createObjectNode()
+			.put("provider", providerType.name)
+			.put("bridge_state", bridgeHealth.state.name)
+			.put("healthy", bridgeHealth.healthy)
+			.put("last_seen_at", bridgeHealth.lastSeenAt?.toString())
+		payload.set("_provider_health", providerHealth)
 		return DeviceSnapshot(
 			providerType = ProviderType.ZIGBEE2MQTT,
 			providerDeviceId = device.providerDeviceId,
 			observedAt = clock.instant(),
-			available = state?.available ?: false,
+			available = bridgeHealth.state != ZigbeeBridgeState.OFFLINE && state?.available == true,
 			lastSeenAt = state?.lastReceivedAt,
 			batteryLevel = state?.batteryLevel,
-			payload = state?.payload ?: objectMapper.createObjectNode(),
+			payload = payload,
 			properties = state?.payload?.toPropertyMap().orEmpty(),
 		)
 	}

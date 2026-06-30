@@ -17,7 +17,17 @@ data class HomeAssistantProperties(
 	val token: String = "",
 	val connectTimeout: Duration = Duration.ofSeconds(3),
 	val readTimeout: Duration = Duration.ofSeconds(10),
+	val skipCertificateChecks: Boolean = false,
+	val serviceCalls: List<HomeAssistantServiceCallMapping> = emptyList(),
 ) {
 	fun normalizedBaseUrl(): String =
 		baseUrl.trim().trimEnd('/')
 }
+
+data class HomeAssistantServiceCallMapping(
+	val propertyPath: String,
+	val domain: String,
+	val service: String,
+	val entityId: String? = null,
+	val desiredValue: String? = null,
+)
