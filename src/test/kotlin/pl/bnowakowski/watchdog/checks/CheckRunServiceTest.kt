@@ -21,6 +21,7 @@ import pl.bnowakowski.watchdog.domain.DeviceCheckStatus
 import pl.bnowakowski.watchdog.domain.ProviderType
 import pl.bnowakowski.watchdog.domain.RuleCheckStatus
 import pl.bnowakowski.watchdog.domain.RuleType
+import pl.bnowakowski.watchdog.fixes.AutoFixService
 import pl.bnowakowski.watchdog.history.ParameterHistoryWriter
 import pl.bnowakowski.watchdog.provider.DeviceSnapshot
 import pl.bnowakowski.watchdog.rules.EffectiveRule
@@ -37,9 +38,10 @@ class CheckRunServiceTest {
 	private val resolver: EffectiveRuleResolver = mock()
 	private val evaluator: CheckEvaluator = mock()
 	private val parameterHistoryWriter: ParameterHistoryWriter = mock()
+	private val autoFixService: AutoFixService = mock()
 	private val objectMapper = ObjectMapper()
 	private val clock = Clock.fixed(Instant.parse("2026-06-30T19:00:00Z"), ZoneOffset.UTC)
-	private val service = CheckRunService(queries, resolver, evaluator, parameterHistoryWriter, objectMapper, clock)
+	private val service = CheckRunService(queries, resolver, evaluator, parameterHistoryWriter, autoFixService, objectMapper, clock)
 
 	@Test
 	fun `manual check creates run and persists results`() {
@@ -87,6 +89,7 @@ class CheckRunServiceTest {
 		verify(queries).completeRun(eq(42), eq(CheckRunStatus.COMPLETED), eq(clock.instant()), any())
 		verify(parameterHistoryWriter).recordCheck(42, evaluated)
 		verify(parameterHistoryWriter).cleanupExpiredHistory()
+		verify(autoFixService).maybeFix(any())
 	}
 
 	private fun device(): Device =

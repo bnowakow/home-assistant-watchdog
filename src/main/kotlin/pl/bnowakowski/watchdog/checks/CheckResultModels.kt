@@ -38,3 +38,8 @@ data class EvaluatedRuleCheck(
 	val expectedValue: JsonNode? = null,
 	val message: String? = null,
 )
+
+data class PersistedRuleCheckResult(
+	val evaluatedRuleCheck: EvaluatedRuleCheck,
+	val ruleCheckResultId: Long,
+)

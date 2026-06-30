@@ -13,6 +13,7 @@ import pl.bnowakowski.watchdog.domain.CheckRunStatus
 import pl.bnowakowski.watchdog.domain.CheckRunTriggerType
 import pl.bnowakowski.watchdog.domain.DeviceCheckStatus
 import pl.bnowakowski.watchdog.domain.RuleCheckStatus
+import pl.bnowakowski.watchdog.fixes.AutoFixService
 import pl.bnowakowski.watchdog.history.ParameterHistoryWriter
 import pl.bnowakowski.watchdog.rules.EffectiveRuleResolver
 import tools.jackson.databind.ObjectMapper
@@ -23,6 +24,7 @@ class CheckRunService(
 	private val effectiveRuleResolver: EffectiveRuleResolver,
 	private val evaluator: CheckEvaluator,
 	private val parameterHistoryWriter: ParameterHistoryWriter,
+	private val autoFixService: AutoFixService,
 	private val objectMapper: ObjectMapper,
 	private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -43,7 +45,8 @@ class CheckRunService(
 					?.let(evaluator::evaluate)
 			}
 			deviceResults.forEach {
-				persistDeviceResult(checkRunId, it)
+				val persistedRuleResults = persistDeviceResult(checkRunId, it)
+				persistedRuleResults.forEach(autoFixService::maybeFix)
 				parameterHistoryWriter.recordCheck(checkRunId, it)
 			}
 			parameterHistoryWriter.cleanupExpiredHistory()
@@ -68,7 +71,7 @@ class CheckRunService(
 	private fun persistDeviceResult(
 		checkRunId: Long,
 		result: EvaluatedDeviceCheck,
-	) {
+	): List<PersistedRuleCheckResult> {
 		val deviceCheckResultId = queries.insertDeviceResult(
 			checkRunId = checkRunId,
 			deviceId = requireNotNull(result.device.id),
@@ -76,8 +79,8 @@ class CheckRunService(
 			snapshot = result.snapshot?.payload ?: objectMapper.createObjectNode(),
 			checkedAt = result.checkedAt,
 		)
-		result.ruleResults.forEach { ruleResult ->
-			queries.insertRuleResult(
+		return result.ruleResults.map { ruleResult ->
+			val ruleCheckResultId = queries.insertRuleResult(
 				deviceCheckResultId = deviceCheckResultId,
 				ruleId = requireNotNull(ruleResult.effectiveRule.rule.id),
 				status = ruleResult.status,
@@ -85,6 +88,7 @@ class CheckRunService(
 				expectedValue = ruleResult.expectedValue,
 				message = ruleResult.message,
 			)
+			PersistedRuleCheckResult(ruleResult, ruleCheckResultId)
 		}
 	}
 
