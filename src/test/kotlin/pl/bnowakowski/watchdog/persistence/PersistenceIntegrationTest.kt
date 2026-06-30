@@ -58,6 +58,9 @@ class PersistenceIntegrationTest {
 	private lateinit var checkRunQueries: CheckRunQueries
 
 	@Autowired
+	private lateinit var deviceGroupMembershipQueries: DeviceGroupMembershipQueries
+
+	@Autowired
 	private lateinit var objectMapper: ObjectMapper
 
 	@BeforeEach
@@ -94,8 +97,8 @@ class PersistenceIntegrationTest {
 			String::class.java,
 		)
 
-		assertTrue(versions.containsAll(listOf("1", "2", "3", "4", "5", "6", "7")))
-		assertEquals(7, versions.size)
+		assertTrue(versions.containsAll(listOf("1", "2", "3", "4", "5", "6", "7", "8")))
+		assertEquals(8, versions.size)
 	}
 
 	@Test
@@ -138,6 +141,23 @@ class PersistenceIntegrationTest {
 		assertEquals("bedroom_switch", loadedDevice.providerMetadata["friendly_name"].asText())
 		assertTrue(deviceRepository.existsByProviderTypeAndIeeeAddress(ProviderType.ZIGBEE2MQTT, "0x54ef4410005e77ba"))
 		assertEquals("decoupled", assertNotNull(loadedRule.desiredValue).asText())
+	}
+
+	@Test
+	fun `device group membership queries lock unlocked group model`() {
+		val savedGroup = deviceGroupRepository.save(DeviceGroup(name = "Bedroom switches"))
+
+		val updated = deviceGroupMembershipQueries.lockModel(
+			groupId = requireNotNull(savedGroup.id),
+			providerType = ProviderType.ZIGBEE2MQTT,
+			modelKey = "WS-EUK04",
+			updatedAt = Instant.parse("2026-06-30T20:30:00Z"),
+		)
+
+		assertEquals(1, updated)
+		val lock = deviceGroupMembershipQueries.findModelLock(requireNotNull(savedGroup.id))
+		assertEquals(ProviderType.ZIGBEE2MQTT, lock?.providerType)
+		assertEquals("WS-EUK04", lock?.modelKey)
 	}
 
 	@Test

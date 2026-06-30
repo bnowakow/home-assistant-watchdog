@@ -7,6 +7,7 @@ import com.vaadin.flow.component.checkbox.Checkbox
 import com.vaadin.flow.component.combobox.ComboBox
 import com.vaadin.flow.component.confirmdialog.ConfirmDialog
 import com.vaadin.flow.component.grid.Grid
+import com.vaadin.flow.component.html.H3
 import com.vaadin.flow.component.notification.Notification
 import com.vaadin.flow.component.orderedlayout.FlexComponent.Alignment
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout
@@ -18,6 +19,7 @@ import jakarta.annotation.security.PermitAll
 import org.springframework.data.repository.findByIdOrNull
 import pl.bnowakowski.watchdog.domain.CheckMode
 import pl.bnowakowski.watchdog.domain.ComparisonOperator
+import pl.bnowakowski.watchdog.domain.Device
 import pl.bnowakowski.watchdog.domain.DeviceGroup
 import pl.bnowakowski.watchdog.domain.DeviceGroupRule
 import pl.bnowakowski.watchdog.domain.JsonDefaults
@@ -43,6 +45,7 @@ class GroupsView(
 	private val objectMapper: ObjectMapper,
 ) : VerticalLayout() {
 	private val groups = Grid(DeviceGroup::class.java, false)
+	private val groupMembers = Grid(Device::class.java, false)
 	private val rules = Grid(DeviceGroupRule::class.java, false)
 	private val selectedGroupName = TextField("Selected group name")
 	private val selectedGroupActions = HorizontalLayout()
@@ -55,9 +58,19 @@ class GroupsView(
 	init {
 		setSizeFull()
 		configureGroups()
+		configureGroupMembers()
 		configureRules()
-		add(groupEditor(), selectedGroupEditor(), groups, membershipEditor(), ruleEditor(), rules)
-		expand(groups, rules)
+		add(
+			groupEditor(),
+			selectedGroupEditor(),
+			groups,
+			membershipEditor(),
+			H3("Group devices"),
+			groupMembers,
+			ruleEditor(),
+			rules,
+		)
+		expand(groups, groupMembers, rules)
 		refresh()
 	}
 
@@ -99,6 +112,33 @@ class GroupsView(
 			}
 		}.setHeader("Actions")
 		rules.setSizeFull()
+	}
+
+	private fun configureGroupMembers() {
+		groupMembers.addColumn(Device::displayName).setHeader("Name").setAutoWidth(true)
+		groupMembers.addColumn(Device::providerType).setHeader("Provider").setAutoWidth(true)
+		groupMembers.addColumn(Device::providerDeviceId).setHeader("External ID").setAutoWidth(true)
+		groupMembers.addColumn(Device::modelKey).setHeader("Model").setAutoWidth(true)
+		groupMembers.addColumn(Device::powerSource).setHeader("Power")
+		groupMembers.addColumn(Device::criticality).setHeader("Criticality")
+		groupMembers.addColumn { if (it.enabled) "Enabled" else "Disabled" }.setHeader("Monitoring")
+		groupMembers.addComponentColumn { device ->
+			HorizontalLayout(
+				Button("Detail") { ui.ifPresent { ui -> device.id?.let { ui.navigate("devices/$it") } } },
+				Button("Remove") {
+					val groupId = selectedGroup?.id
+					val deviceId = device.id
+					if (groupId != null && deviceId != null) {
+						uiQueries.removeMembership(deviceId, groupId)
+						Notification.show("Device removed from group")
+						refresh()
+					}
+				}.apply {
+					addThemeVariants(ButtonVariant.LUMO_ERROR)
+				},
+			)
+		}.setHeader("Actions").setAutoWidth(true)
+		groupMembers.setSizeFull()
 	}
 
 	private fun groupEditor(): HorizontalLayout {
@@ -167,8 +207,9 @@ class GroupsView(
 	}
 
 	private fun membershipEditor(): HorizontalLayout {
-		val device = ComboBox<pl.bnowakowski.watchdog.domain.Device>("Device").apply {
-			setItemLabelGenerator { "${it.displayName} (${it.providerType}/${it.modelKey})" }
+		val device = ComboBox<Device>("Device").apply {
+			setItemLabelGenerator(::deviceOptionLabel)
+			setWidth("min(760px, 100%)")
 		}
 		val add = Button("Assign") {
 			val groupId = selectedGroup?.id
@@ -187,14 +228,42 @@ class GroupsView(
 			val deviceId = device.value?.id
 			if (groupId != null && deviceId != null) {
 				uiQueries.removeMembership(deviceId, groupId)
+				Notification.show("Device removed from group")
 				refresh()
 			}
 		}
 		return HorizontalLayout(device, add, remove).apply {
+			width = "100%"
 			addAttachListener {
-				device.setItems(deviceRepository.findAll().sortedBy { it.displayName })
+				val devices = deviceRepository.findAll().sortedBy { it.displayName.lowercase() }
+				device.setItems({ item, filter -> item.matchesDeviceFilter(filter) }, devices)
 			}
 		}
+	}
+
+	private fun deviceOptionLabel(device: Device): String {
+		val addresses = listOfNotNull(device.ieeeAddress, device.networkAddress)
+			.joinToString(", ")
+			.takeIf { it.isNotBlank() }
+		val model = "${device.providerType}/${device.modelKey}"
+		return listOfNotNull(device.displayName, addresses, model)
+			.joinToString(" - ")
+	}
+
+	private fun Device.matchesDeviceFilter(filter: String): Boolean {
+		val normalizedFilter = filter.trim().lowercase()
+		if (normalizedFilter.isBlank()) {
+			return true
+		}
+		return listOfNotNull(
+			displayName,
+			friendlyName,
+			providerDeviceId,
+			ieeeAddress,
+			networkAddress,
+			modelKey,
+			modelName,
+		).any { it.lowercase().contains(normalizedFilter) }
 	}
 
 	private fun ruleEditor(): HorizontalLayout {
@@ -262,8 +331,23 @@ class GroupsView(
 		val group = selectedGroup?.id?.let(groupRepository::findByIdOrNull)
 		selectedGroup = group
 		refreshSelectedGroupEditor()
+		refreshGroupMembers()
 		rules.setItems(group?.id?.let(ruleRepository::findAllByGroupId).orEmpty())
 		refreshPropertyPaths()
+	}
+
+	private fun refreshGroupMembers() {
+		val groupId = selectedGroup?.id
+		if (groupId == null) {
+			groupMembers.setItems(emptyList())
+			return
+		}
+		val memberIds = uiQueries.groupMemberIds(groupId)
+		groupMembers.setItems(
+			deviceRepository.findAll()
+				.filter { it.id in memberIds }
+				.sortedBy { it.displayName.lowercase() },
+		)
 	}
 
 	private fun refreshSelectedGroupEditor() {

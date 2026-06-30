@@ -11,6 +11,7 @@ import org.springframework.validation.annotation.Validated
 @ConfigurationProperties("watchdog.check")
 data class CheckProperties(
 	val enabled: Boolean = true,
+	val scheduledEnabled: Boolean = true,
 	@field:Min(1)
 	val intervalSeconds: Long = 300,
 	@field:Min(0)

@@ -3,6 +3,7 @@
 
 package pl.bnowakowski.watchdog.persistence
 
+import java.sql.Timestamp
 import java.time.Instant
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
@@ -52,7 +53,7 @@ class DeviceGroupMembershipQueries(
 				"groupId" to groupId,
 				"providerType" to providerType.name,
 				"modelKey" to modelKey,
-				"updatedAt" to updatedAt,
+				"updatedAt" to Timestamp.from(updatedAt),
 			),
 		)
 

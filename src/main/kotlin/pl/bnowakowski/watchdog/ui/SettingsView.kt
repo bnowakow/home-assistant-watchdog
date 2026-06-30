@@ -26,6 +26,7 @@ class SettingsView(
 		add(
 			H2("Scheduler"),
 			Paragraph("Checks enabled: ${checkProperties.enabled}"),
+			Paragraph("Scheduled checks enabled: ${checkProperties.scheduledEnabled}"),
 			Paragraph("Interval: ${checkProperties.intervalSeconds} seconds"),
 			H2("MQTT"),
 			Paragraph("MQTT enabled: ${mqttProperties.enabled}"),

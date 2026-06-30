@@ -115,7 +115,7 @@ class CheckRunService(
 }
 
 @Service
-@ConditionalOnProperty(prefix = "watchdog.check", name = ["enabled"], havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(prefix = "watchdog.check", name = ["scheduled-enabled"], havingValue = "true", matchIfMissing = true)
 class ScheduledCheckRunner(
 	private val checkRunService: CheckRunService,
 ) {
