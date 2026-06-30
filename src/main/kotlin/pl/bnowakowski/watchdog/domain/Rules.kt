@@ -35,6 +35,10 @@ data class DeviceGroupRule(
 	val notifyOnFixSuccess: Boolean = false,
 	@Column("notify_on_fix_failure")
 	val notifyOnFixFailure: Boolean = true,
+	@Column("notify_on_low_battery")
+	val notifyOnLowBattery: Boolean = false,
+	@Column("notify_on_offline_stale")
+	val notifyOnOfflineStale: Boolean = false,
 	@Column("notify_on_recovery")
 	val notifyOnRecovery: Boolean = true,
 	@Column("cooldown_seconds")

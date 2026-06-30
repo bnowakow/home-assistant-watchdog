@@ -25,6 +25,7 @@ import pl.bnowakowski.watchdog.domain.FixAttemptStatus
 import pl.bnowakowski.watchdog.domain.ProviderType
 import pl.bnowakowski.watchdog.domain.RuleCheckStatus
 import pl.bnowakowski.watchdog.domain.RuleType
+import pl.bnowakowski.watchdog.notifications.NotificationService
 import pl.bnowakowski.watchdog.provider.DevicePropertyRef
 import pl.bnowakowski.watchdog.provider.DeviceProvider
 import pl.bnowakowski.watchdog.provider.DeviceProviderRegistry
@@ -41,6 +42,7 @@ class AutoFixServiceTest {
 	private val objectMapper = ObjectMapper()
 	private val provider: DeviceProvider = mock()
 	private val queries: FixAttemptQueries = mock()
+	private val notificationService: NotificationService = mock()
 	private val clock = Clock.fixed(Instant.parse("2026-06-30T21:00:00Z"), ZoneOffset.UTC)
 
 	@Test
@@ -67,6 +69,7 @@ class AutoFixServiceTest {
 			requestedAt = clock.instant(),
 			confirmedAt = null,
 		)
+		verify(notificationService).notifyFixResult(result, FixAttemptStatus.REQUESTED, "published")
 	}
 
 	@Test
@@ -123,6 +126,7 @@ class AutoFixServiceTest {
 			providerRegistry = DeviceProviderRegistry(listOf(provider)),
 			queries = queries,
 			properties = FixProperties(defaultRetryCount = 1, defaultRetryDelaySeconds = 0, defaultCooldownSeconds = 300),
+			notificationService = notificationService,
 			objectMapper = objectMapper,
 			clock = clock,
 			sleeper = FixRetrySleeper { },

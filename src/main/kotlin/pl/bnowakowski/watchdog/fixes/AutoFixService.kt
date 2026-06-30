@@ -14,6 +14,7 @@ import pl.bnowakowski.watchdog.provider.DeviceProviderRegistry
 import pl.bnowakowski.watchdog.provider.DevicePropertyRef
 import pl.bnowakowski.watchdog.provider.ProviderFixStatus
 import pl.bnowakowski.watchdog.provider.UnknownDeviceProviderException
+import pl.bnowakowski.watchdog.notifications.NotificationService
 import tools.jackson.databind.ObjectMapper
 
 @Service
@@ -21,6 +22,7 @@ class AutoFixService(
 	private val providerRegistry: DeviceProviderRegistry,
 	private val queries: FixAttemptQueries,
 	private val properties: FixProperties,
+	private val notificationService: NotificationService,
 	private val objectMapper: ObjectMapper,
 	private val clock: Clock = Clock.systemUTC(),
 	private val sleeper: FixRetrySleeper = ThreadFixRetrySleeper,
@@ -89,6 +91,7 @@ class AutoFixService(
 					requestedAt = clock.instant(),
 					confirmedAt = providerResult.confirmedAt,
 				)
+				notificationService.notifyFixResult(result, lastStatus, providerResult.message)
 				return
 			}
 			if (attempt < retryCount) {
@@ -104,6 +107,7 @@ class AutoFixService(
 			requestedAt = clock.instant(),
 			confirmedAt = null,
 		)
+		notificationService.notifyFixResult(result, lastStatus, lastResponse.get("message")?.asText())
 	}
 
 	private fun withinCooldown(ruleId: Long, deviceId: Long, cooldownSeconds: Long): Boolean {

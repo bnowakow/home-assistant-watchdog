@@ -15,6 +15,7 @@ import pl.bnowakowski.watchdog.domain.DeviceCheckStatus
 import pl.bnowakowski.watchdog.domain.RuleCheckStatus
 import pl.bnowakowski.watchdog.fixes.AutoFixService
 import pl.bnowakowski.watchdog.history.ParameterHistoryWriter
+import pl.bnowakowski.watchdog.notifications.NotificationService
 import pl.bnowakowski.watchdog.rules.EffectiveRuleResolver
 import tools.jackson.databind.ObjectMapper
 
@@ -25,6 +26,7 @@ class CheckRunService(
 	private val evaluator: CheckEvaluator,
 	private val parameterHistoryWriter: ParameterHistoryWriter,
 	private val autoFixService: AutoFixService,
+	private val notificationService: NotificationService,
 	private val objectMapper: ObjectMapper,
 	private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -45,9 +47,10 @@ class CheckRunService(
 					?.let(evaluator::evaluate)
 			}
 			deviceResults.forEach {
-				val persistedRuleResults = persistDeviceResult(checkRunId, it)
-				persistedRuleResults.forEach(autoFixService::maybeFix)
-				parameterHistoryWriter.recordCheck(checkRunId, it)
+					val persistedRuleResults = persistDeviceResult(checkRunId, it)
+					persistedRuleResults.forEach(notificationService::notifyRuleResult)
+					persistedRuleResults.forEach(autoFixService::maybeFix)
+					parameterHistoryWriter.recordCheck(checkRunId, it)
 			}
 			parameterHistoryWriter.cleanupExpiredHistory()
 			val finishedAt = clock.instant()
