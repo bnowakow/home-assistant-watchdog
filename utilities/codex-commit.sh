@@ -372,8 +372,7 @@ sync_upstream_before_push() {
 	behind=0
 
 	if upstream=$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
-		echo "Fetching $upstream before push check..."
-		git fetch --quiet
+		echo "Checking cached $upstream before push..."
 		read -r ahead behind < <(git rev-list --left-right --count HEAD..."$upstream")
 
 		if [ "$behind" -gt 0 ]; then
@@ -401,8 +400,7 @@ sync_upstream_before_commit() {
 		return 0
 	fi
 
-	echo "Fetching $upstream before commit check..."
-	git fetch --quiet
+	echo "Checking cached $upstream before commit..."
 	read -r ahead behind < <(git rev-list --left-right --count HEAD..."$upstream")
 
 	if [ "$behind" -eq 0 ]; then

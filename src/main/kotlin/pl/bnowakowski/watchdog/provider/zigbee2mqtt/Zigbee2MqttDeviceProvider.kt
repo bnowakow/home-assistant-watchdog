@@ -67,6 +67,12 @@ class Zigbee2MqttDeviceProvider(
 
 		return runCatching {
 			mqtt.publish(topic, objectMapper.writeValueAsBytes(payload))
+			stateCache.recordPendingFix(
+				friendlyName = discoveredDevice.friendlyName,
+				propertyPath = property.propertyPath,
+				desiredValue = desiredValue,
+				requestedAt = clock.instant(),
+			)
 			FixAttemptResult(
 				status = ProviderFixStatus.REQUESTED,
 				message = "Published desired state to $topic",

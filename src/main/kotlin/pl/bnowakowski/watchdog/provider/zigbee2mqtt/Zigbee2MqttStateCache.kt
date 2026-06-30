@@ -25,6 +25,7 @@ class Zigbee2MqttStateCache(
 	private val discoveredByIeeeAddress = ConcurrentHashMap<String, DiscoveredZigbeeDevice>()
 	private val discoveredByFriendlyName = ConcurrentHashMap<String, DiscoveredZigbeeDevice>()
 	private val statesByFriendlyName = ConcurrentHashMap<String, ZigbeeDeviceState>()
+	private val pendingFixes = ConcurrentHashMap<PendingZigbeeFixKey, PendingZigbeeFix>()
 	@Volatile
 	private var bridgeState: ZigbeeBridgeState = ZigbeeBridgeState.UNKNOWN
 	@Volatile
@@ -109,6 +110,7 @@ class Zigbee2MqttStateCache(
 				batteryLevel = update.batteryLevel ?: previous.batteryLevel,
 			)
 		}
+		confirmPendingFixes(friendlyName, root, now)
 	}
 
 	fun discoveredDevices(): List<DiscoveredDevice> =
@@ -133,6 +135,43 @@ class Zigbee2MqttStateCache(
 			lastSeenAt = bridgeLastSeenAt,
 			healthy = bridgeState == ZigbeeBridgeState.ONLINE,
 		)
+
+	fun recordPendingFix(
+		friendlyName: String,
+		propertyPath: String,
+		desiredValue: JsonNode,
+		requestedAt: Instant = clock.instant(),
+	): PendingZigbeeFix =
+		PendingZigbeeFix(
+			friendlyName = friendlyName,
+			propertyPath = propertyPath,
+			desiredValue = desiredValue,
+			requestedAt = requestedAt,
+		).also {
+			pendingFixes[PendingZigbeeFixKey(friendlyName, propertyPath)] = it
+		}
+
+	fun fixConfirmation(
+		friendlyName: String,
+		propertyPath: String,
+	): PendingZigbeeFix? =
+		pendingFixes[PendingZigbeeFixKey(friendlyName, propertyPath)]
+
+	private fun confirmPendingFixes(
+		friendlyName: String,
+		statePayload: JsonNode,
+		confirmedAt: Instant,
+	) {
+		pendingFixes.values
+			.filter { it.friendlyName == friendlyName && it.confirmedAt == null }
+			.forEach { pending ->
+				val actualValue = statePayload[pending.propertyPath]
+				if (actualValue != null && actualValue == pending.desiredValue) {
+					pendingFixes[PendingZigbeeFixKey(friendlyName, pending.propertyPath)] =
+						pending.copy(confirmedAt = confirmedAt)
+				}
+			}
+	}
 
 	private fun parseExposes(exposes: JsonNode?): List<PropertyMetadata> {
 		if (exposes == null || !exposes.isArray) {
@@ -231,6 +270,22 @@ data class ZigbeeBridgeHealth(
 	val state: ZigbeeBridgeState,
 	val lastSeenAt: Instant?,
 	val healthy: Boolean,
+)
+
+data class PendingZigbeeFix(
+	val friendlyName: String,
+	val propertyPath: String,
+	val desiredValue: JsonNode,
+	val requestedAt: Instant,
+	val confirmedAt: Instant? = null,
+) {
+	val confirmed: Boolean
+		get() = confirmedAt != null
+}
+
+private data class PendingZigbeeFixKey(
+	val friendlyName: String,
+	val propertyPath: String,
 )
 
 enum class ZigbeeBridgeState {
