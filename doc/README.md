@@ -16,6 +16,12 @@ Project documentation, specifications, and implementation plans.
 
 ## Operations
 
+- Home Assistant integration uses the REST API when `WATCHDOG_HOME_ASSISTANT_ENABLED=true`.
+  Create a token in Home Assistant from the user profile page under **Long-lived access tokens**,
+  name it for this watchdog app, and store it only in local/deployment environment as
+  `WATCHDOG_HOME_ASSISTANT_TOKEN`. Prefer a JVM-trusted HTTPS certificate for
+  `WATCHDOG_HOME_ASSISTANT_BASE_URL`; if a local certificate is not trusted, import the issuing
+  CA/certificate into the JVM truststore before considering any development-only insecure TLS mode.
 - `make docker-pg-backup` dumps the Compose PostgreSQL database into
   `docker-data/backup/postgres/`.
 - `make install-pg-backup-cron` installs a daily database backup cron job for the current user.
