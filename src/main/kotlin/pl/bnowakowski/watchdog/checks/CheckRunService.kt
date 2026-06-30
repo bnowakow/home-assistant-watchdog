@@ -13,6 +13,7 @@ import pl.bnowakowski.watchdog.domain.CheckRunStatus
 import pl.bnowakowski.watchdog.domain.CheckRunTriggerType
 import pl.bnowakowski.watchdog.domain.DeviceCheckStatus
 import pl.bnowakowski.watchdog.domain.RuleCheckStatus
+import pl.bnowakowski.watchdog.history.ParameterHistoryWriter
 import pl.bnowakowski.watchdog.rules.EffectiveRuleResolver
 import tools.jackson.databind.ObjectMapper
 
@@ -21,6 +22,7 @@ class CheckRunService(
 	private val queries: CheckRunQueries,
 	private val effectiveRuleResolver: EffectiveRuleResolver,
 	private val evaluator: CheckEvaluator,
+	private val parameterHistoryWriter: ParameterHistoryWriter,
 	private val objectMapper: ObjectMapper,
 	private val clock: Clock = Clock.systemUTC(),
 ) {
@@ -40,7 +42,11 @@ class CheckRunService(
 				effectiveRuleResolver.resolveForDevice(device.id ?: return@mapNotNull null)
 					?.let(evaluator::evaluate)
 			}
-			deviceResults.forEach { persistDeviceResult(checkRunId, it) }
+			deviceResults.forEach {
+				persistDeviceResult(checkRunId, it)
+				parameterHistoryWriter.recordCheck(checkRunId, it)
+			}
+			parameterHistoryWriter.cleanupExpiredHistory()
 			val finishedAt = clock.instant()
 			val status = CheckRunStatus.COMPLETED
 			queries.completeRun(checkRunId, status, finishedAt, summary(deviceResults))
