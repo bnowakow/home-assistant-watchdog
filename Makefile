@@ -1,4 +1,4 @@
-.PHONY: help docker-up docker-down docker-data-permissions docker-pg-backup install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs build run run-local run-prod test clean bump-patch bump-minor codex-commit
+.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit
 
 -include .env
 
@@ -24,12 +24,15 @@ help:
 	@printf "\n"
 	@printf "  \033[1;94m%s\033[0m\n" "Docker"
 	@printf "    %-28s %s\n" "docker-up" "Start local infrastructure from compose.yaml"
+	@printf "    %-28s %s\n" "docker-app-up" "Build/start PostgreSQL and the Spring Boot container"
 	@printf "    %-28s %s\n" "docker-down" "Stop and remove local infrastructure containers"
 	@printf "    %-28s %s\n" "docker-logs" "Show compose logs in follow mode"
+	@printf "    %-28s %s\n" "docker-app-logs" "Show application logs in follow mode"
 	@printf "\n"
 	@printf "  \033[1;94m%s\033[0m\n" "PostgreSQL in Docker"
 	@printf "    %-28s %s\n" "docker-data-permissions" "Prepare docker-data directories and permissions"
 	@printf "    %-28s %s\n" "docker-pg-backup" "Dump PostgreSQL and zip it into docker-data/backup/postgres"
+	@printf "    %-28s %s\n" "docker-pg-history-stats" "Show parameter-history row counts and oldest/newest timestamps"
 	@printf "    %-28s %s\n" "install-pg-backup-cron" "Install daily PostgreSQL backup cron job"
 	@printf "    %-28s %s\n" "ensure-pg-backup-cron" "Install daily PostgreSQL backup cron job only when missing"
 	@printf "    %-28s %s\n" "docker-pg-shell" "Open PostgreSQL shell inside the compose postgres container"
@@ -39,6 +42,7 @@ help:
 	@printf "    %-28s %s\n" "run" "Run Spring Boot with SPRING_PROFILES_ACTIVE from .env"
 	@printf "    %-28s %s\n" "run-local" "Run Spring Boot with local profile"
 	@printf "    %-28s %s\n" "run-prod" "Run Spring Boot with prod profile"
+	@printf "    %-28s %s\n" "app-health" "Check the configured local app health endpoint"
 	@printf "    %-28s %s\n" "test" "Run all tests"
 	@printf "    %-28s %s\n" "clean" "Clean Gradle build artifacts"
 	@printf "\n"
@@ -56,11 +60,23 @@ docker-up: docker-data-permissions
 	@echo "  - App:        http://localhost:$(APP_PORT) once Spring Boot is running"
 	@echo ""
 
+docker-app-up: docker-data-permissions
+	docker compose -f compose.yaml up -d --build postgres springboot
+	@echo ""
+	@echo "Application started:"
+	@echo "  - App:        http://localhost:$(APP_PORT)"
+	@echo "  - Health:     http://localhost:$(APP_PORT)/actuator/health"
+	@echo "  - PostgreSQL: localhost:$(POSTGRES_PORT)"
+	@echo ""
+
 docker-down:
 	docker compose -f compose.yaml down
 
 docker-logs:
 	docker compose -f compose.yaml logs -f
+
+docker-app-logs:
+	docker compose -f compose.yaml logs -f springboot
 
 docker-data-permissions:
 	@mkdir -p ./docker-data/backup/postgres ./docker-data/postgres ./docker-data/data ./logs
@@ -79,6 +95,10 @@ docker-pg-backup: docker-data-permissions
 	zip -j "$$zip_path" "$$sql_path" >/dev/null; \
 	rm "$$sql_path"; \
 	echo "Backup written to $$zip_path"
+
+docker-pg-history-stats:
+	docker compose -f compose.yaml exec -T postgres psql -U "$(POSTGRES_USER)" -d "$(POSTGRES_DB)" \
+		-c "SELECT count(*) AS rows, min(observed_at) AS oldest_observed_at, max(observed_at) AS newest_observed_at FROM device_parameter_history;"
 
 install-pg-backup-cron: docker-data-permissions
 	@job='$(CRON_SCHEDULE) cd $(PWD) && $(CRON_MAKE) docker-pg-backup >> $(PWD)/docker-data/backup/postgres/cron.log 2>&1 # $(PG_BACKUP_CRON_MARKER)'; \
@@ -109,6 +129,9 @@ run-local:
 
 run-prod:
 	SPRING_PROFILES_ACTIVE=prod ./gradlew bootRun
+
+app-health:
+	curl -fsS "http://localhost:$(APP_PORT)/actuator/health"
 
 test:
 	./gradlew $(if $(TEST_GRADLE_WORKERS),--max-workers=$(TEST_GRADLE_WORKERS),) $(if $(TEST_GRADLE_JVMARGS),-Dorg.gradle.jvmargs="$(TEST_GRADLE_JVMARGS)",) test $(TEST_GRADLE_ARGS)

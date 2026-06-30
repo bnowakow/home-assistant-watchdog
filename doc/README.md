@@ -16,6 +16,9 @@ Project documentation, specifications, and implementation plans.
 
 ## Operations
 
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - phase-14 runbook for laptop verification, observe-only
+  provider checks, limited auto-fix rollout, Pushover enablement, history review, and server
+  deployment.
 - Home Assistant integration uses the REST API when `WATCHDOG_HOME_ASSISTANT_ENABLED=true`.
   Create a token in Home Assistant from the user profile page under **Long-lived access tokens**,
   name it for this watchdog app, and store it only in local/deployment environment as

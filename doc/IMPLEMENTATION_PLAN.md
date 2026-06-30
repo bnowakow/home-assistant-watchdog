@@ -294,9 +294,11 @@ Assistant entities and future APIs can be added without redesigning rules.
 
 ## Phase 14 - Deployment Path
 
-68. Run locally on laptop with Dockerized PostgreSQL and local JVM Spring Boot.
-69. Verify against the real MQTT broker and Home Assistant instance with observe-only rules.
-70. Enable auto-fix for a small non-critical group.
-71. Enable Pushover for critical devices.
-72. Review parameter-history growth after several days and tune retention before moving to server.
-73. Move to server with the same Compose-managed PostgreSQL volume model.
+68. [x] Run locally on laptop with Dockerized PostgreSQL and local JVM Spring Boot.
+69. [x] Verify against the real MQTT broker and Home Assistant instance with observe-only rules.
+70. [x] Enable auto-fix for a small non-critical group.
+71. [x] Enable Pushover for critical devices.
+72. [x] Review parameter-history growth after several days and tune retention before moving to server.
+73. [x] Move to server with the same Compose-managed PostgreSQL volume model.
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for the operational runbook and Makefile helpers.

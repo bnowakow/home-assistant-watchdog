@@ -5,6 +5,9 @@ package pl.bnowakowski.watchdog.provider.zigbee2mqtt
 
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken
 import org.eclipse.paho.client.mqttv3.MqttAsyncClient
 import org.eclipse.paho.client.mqttv3.MqttCallbackExtended
@@ -23,6 +26,9 @@ class PahoMqttGateway(
 ) : MqttGateway, SmartLifecycle {
 	private val logger = LoggerFactory.getLogger(javaClass)
 	private val subscriptions = CopyOnWriteArrayList<Subscription>()
+	private val reconnectExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
+		Thread(runnable, "watchdog-mqtt-reconnect").also { it.isDaemon = true }
+	}
 	private val client = MqttAsyncClient(
 		properties.brokerUri,
 		properties.clientId,
@@ -59,18 +65,26 @@ class PahoMqttGateway(
 			client.connect(connectOptions()).waitForCompletion()
 			running = true
 		}.onFailure {
-			logger.warn("Could not connect to MQTT broker {}: {}", properties.brokerUri, it.message)
+			logger.warn(
+				"Could not connect to MQTT broker {}: {}; will retry in {}s. Set WATCHDOG_MQTT_ENABLED=false to disable MQTT locally.",
+				properties.brokerUri,
+				it.message,
+				properties.reconnectDelaySeconds,
+			)
 			running = false
+			scheduleReconnect()
 		}
 	}
 
 	override fun stop() {
 		if (!running) {
+			reconnectExecutor.shutdownNow()
 			return
 		}
 		runCatching {
 			client.disconnect().waitForCompletion()
 		}
+		reconnectExecutor.shutdownNow()
 		running = false
 	}
 
@@ -99,6 +113,22 @@ class PahoMqttGateway(
 				logger.warn("Could not subscribe to {}: {}", subscription.topicFilter, it.message)
 			}
 		}
+	}
+
+	private fun scheduleReconnect() {
+		if (reconnectExecutor.isShutdown) {
+			return
+		}
+
+		reconnectExecutor.schedule(
+			{
+				if (!running) {
+					start()
+				}
+			},
+			properties.reconnectDelaySeconds.toLong(),
+			TimeUnit.SECONDS,
+		)
 	}
 
 	private fun connectOptions(): MqttConnectOptions =
