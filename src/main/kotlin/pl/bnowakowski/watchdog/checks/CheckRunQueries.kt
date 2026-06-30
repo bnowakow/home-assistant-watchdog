@@ -4,6 +4,7 @@
 package pl.bnowakowski.watchdog.checks
 
 import java.sql.ResultSet
+import java.sql.Timestamp
 import java.time.Instant
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.support.GeneratedKeyHolder
@@ -48,7 +49,7 @@ class CheckRunQueries(
 			mapOf(
 				"triggerType" to triggerType.name,
 				"status" to CheckRunStatus.RUNNING.name,
-				"startedAt" to startedAt,
+				"startedAt" to startedAt.toSqlTimestamp(),
 				"summary" to "{}",
 			),
 		)
@@ -70,7 +71,7 @@ class CheckRunQueries(
 			mapOf(
 				"checkRunId" to checkRunId,
 				"status" to status.name,
-				"finishedAt" to finishedAt,
+				"finishedAt" to finishedAt.toSqlTimestamp(),
 				"summary" to objectMapper.writeValueAsString(summary),
 			),
 		)
@@ -93,7 +94,7 @@ class CheckRunQueries(
 				"deviceId" to deviceId,
 				"status" to status.name,
 				"snapshot" to objectMapper.writeValueAsString(snapshot),
-				"checkedAt" to checkedAt,
+				"checkedAt" to checkedAt.toSqlTimestamp(),
 			),
 		)
 
@@ -165,4 +166,7 @@ class CheckRunQueries(
 
 	private fun jsonNode(value: String?): JsonNode? =
 		value?.let(objectMapper::readTree)
+
+	private fun Instant.toSqlTimestamp(): Timestamp =
+		Timestamp.from(this)
 }

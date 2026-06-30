@@ -8,8 +8,10 @@ import com.vaadin.flow.component.orderedlayout.Scroller
 import com.vaadin.flow.component.sidenav.SideNav
 import com.vaadin.flow.component.sidenav.SideNavItem
 import com.vaadin.flow.router.Layout
+import jakarta.annotation.security.PermitAll
 
 @Layout
+@PermitAll
 class MainLayout : AppLayout() {
 	init {
 		primarySection = Section.DRAWER
