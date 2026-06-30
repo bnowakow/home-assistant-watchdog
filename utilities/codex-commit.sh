@@ -458,7 +458,10 @@ prompt_for_push() {
 
 		case "$push_choice" in
 			push)
-				git push
+				if ! git push; then
+					echo "Push failed; the local commit was created but remains unpushed."
+					return 0
+				fi
 				break
 				;;
 			diff)
