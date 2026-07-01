@@ -143,7 +143,12 @@ class NotificationServiceTest {
 			email = "admin@example.com",
 			pushoverUserKeyEncrypted = "encrypted",
 			pushoverDevices = listOf("phone"),
+			notifyMismatchEnabled = true,
+			notifyLowBatteryEnabled = true,
+			notifyOfflineStaleEnabled = true,
 			notifyRecoveryEnabled = notifyRecoveryEnabled,
+			notifyFixSuccessEnabled = true,
+			notifyFixFailureEnabled = true,
 		)
 
 	private fun persistedResult(

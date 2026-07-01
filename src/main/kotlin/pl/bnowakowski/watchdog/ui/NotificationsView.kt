@@ -47,6 +47,21 @@ class NotificationsView(
 		val recovery = Checkbox("Recovery notifications").apply {
 			value = preference?.notifyRecoveryEnabled ?: true
 		}
+		val mismatch = Checkbox("Mismatch notifications").apply {
+			value = preference?.notifyMismatchEnabled ?: true
+		}
+		val lowBattery = Checkbox("Low battery notifications").apply {
+			value = preference?.notifyLowBatteryEnabled ?: true
+		}
+		val offlineStale = Checkbox("Offline / stale notifications").apply {
+			value = preference?.notifyOfflineStaleEnabled ?: true
+		}
+		val fixSuccess = Checkbox("Fix success notifications").apply {
+			value = preference?.notifyFixSuccessEnabled ?: true
+		}
+		val fixFailure = Checkbox("Fix failure notifications").apply {
+			value = preference?.notifyFixFailureEnabled ?: true
+		}
 		val save = Button("Save Pushover") {
 			runCatching {
 				preferenceService.savePushoverPreference(
@@ -54,7 +69,12 @@ class NotificationsView(
 					input = NotificationPreferenceInput(
 						pushoverUserKey = userKey.value,
 						pushoverDevices = listOf(devices.value),
+						notifyMismatchEnabled = mismatch.value,
+						notifyLowBatteryEnabled = lowBattery.value,
+						notifyOfflineStaleEnabled = offlineStale.value,
 						notifyRecoveryEnabled = recovery.value,
+						notifyFixSuccessEnabled = fixSuccess.value,
+						notifyFixFailureEnabled = fixFailure.value,
 					),
 				)
 			}.onSuccess {
@@ -79,7 +99,12 @@ class NotificationsView(
 			H2("Pushover"),
 			userKey,
 			HorizontalLayout(devices, importDevices),
+			mismatch,
+			lowBattery,
+			offlineStale,
 			recovery,
+			fixSuccess,
+			fixFailure,
 			save,
 			H2("History"),
 			grid,

@@ -3,6 +3,7 @@
 
 package pl.bnowakowski.watchdog.provider.zigbee2mqtt
 
+import java.net.InetAddress
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Positive
 import org.springframework.boot.context.properties.ConfigurationProperties
@@ -17,11 +18,11 @@ data class MqttProperties(
 	val username: String = "addons",
 	val password: String = "",
 	@field:NotBlank
-	val clientId: String = "home-assistant-watchdog",
+	val clientId: String = defaultClientId(),
 	@field:Positive
 	val connectionTimeoutSeconds: Int = 10,
 	@field:Positive
-	val keepAliveSeconds: Int = 30,
+	val keepAliveSeconds: Int = 60,
 	@field:Positive
 	val reconnectDelaySeconds: Int = 30,
 )
@@ -33,4 +34,15 @@ data class Zigbee2MqttProperties(
 	val baseTopic: String = "zigbee2mqtt-2",
 ) {
 	fun normalizedBaseTopic(): String = baseTopic.trim().trim('/')
+}
+
+private fun defaultClientId(): String {
+	val hostname = System.getenv("HOSTNAME")
+		?.trim()
+		?.takeIf { it.isNotBlank() }
+		?: runCatching { InetAddress.getLocalHost().hostName.trim() }
+			.getOrNull()
+			?.takeIf { it.isNotBlank() }
+			?: "unknown-host"
+	return "home-assistant-watchdog-$hostname"
 }

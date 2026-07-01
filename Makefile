@@ -97,13 +97,15 @@ docker-springboot-logs:
 
 docker-app-logs: docker-springboot-logs
 
-docker-upgrade: docker-data-permissions
-	git pull --ff-only
+docker-upgrade:
+	GIT_TERMINAL_PROMPT=0 git -c url."https://github.com/".insteadOf=git@github.com: pull --ff-only
+	$(MAKE) docker-data-permissions
 	docker compose -f compose.yaml up -d --build postgres springboot
 	docker compose -f compose.yaml logs -f springboot
 
-docker-upgrade-no-cache: docker-data-permissions
-	git pull --ff-only
+docker-upgrade-no-cache:
+	GIT_TERMINAL_PROMPT=0 git -c url."https://github.com/".insteadOf=git@github.com: pull --ff-only
+	$(MAKE) docker-data-permissions
 	docker compose -f compose.yaml build --no-cache postgres springboot
 	docker compose -f compose.yaml up -d --force-recreate postgres springboot
 	docker compose -f compose.yaml logs -f springboot

@@ -11,7 +11,12 @@ data class NotificationRecipient(
 	val email: String,
 	val pushoverUserKeyEncrypted: String,
 	val pushoverDevices: List<String>,
+	val notifyMismatchEnabled: Boolean,
+	val notifyLowBatteryEnabled: Boolean,
+	val notifyOfflineStaleEnabled: Boolean,
 	val notifyRecoveryEnabled: Boolean,
+	val notifyFixSuccessEnabled: Boolean,
+	val notifyFixFailureEnabled: Boolean,
 )
 
 data class NotificationPreference(
@@ -19,7 +24,12 @@ data class NotificationPreference(
 	val pushoverUserKeyEncrypted: String?,
 	val pushoverUserKeySuffix: String?,
 	val pushoverDevices: List<String>,
+	val notifyMismatchEnabled: Boolean,
+	val notifyLowBatteryEnabled: Boolean,
+	val notifyOfflineStaleEnabled: Boolean,
 	val notifyRecoveryEnabled: Boolean,
+	val notifyFixSuccessEnabled: Boolean,
+	val notifyFixFailureEnabled: Boolean,
 	val createdAt: Instant?,
 	val updatedAt: Instant?,
 )
@@ -27,7 +37,12 @@ data class NotificationPreference(
 data class NotificationPreferenceInput(
 	val pushoverUserKey: String?,
 	val pushoverDevices: Collection<String>,
+	val notifyMismatchEnabled: Boolean = true,
+	val notifyLowBatteryEnabled: Boolean = true,
+	val notifyOfflineStaleEnabled: Boolean = true,
 	val notifyRecoveryEnabled: Boolean = true,
+	val notifyFixSuccessEnabled: Boolean = true,
+	val notifyFixFailureEnabled: Boolean = true,
 )
 
 data class PushoverMessage(

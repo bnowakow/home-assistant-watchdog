@@ -49,7 +49,11 @@ class PahoMqttGateway(
 			}
 
 			override fun connectionLost(cause: Throwable?) {
-				logger.warn("MQTT connection lost: {}", cause?.message ?: "unknown")
+				if (cause == null) {
+					logger.debug("MQTT connection lost: unknown")
+				} else {
+					logger.debug("MQTT connection lost: {}: {}", cause.javaClass.name, cause.message, cause)
+				}
 			}
 
 			override fun messageArrived(topic: String, message: MqttMessage) {
@@ -65,7 +69,7 @@ class PahoMqttGateway(
 			client.connect(connectOptions()).waitForCompletion()
 			running = true
 		}.onFailure {
-			logger.warn(
+			logger.debug(
 				"Could not connect to MQTT broker {}: {}; will retry in {}s. Set WATCHDOG_MQTT_ENABLED=false to disable MQTT locally.",
 				properties.brokerUri,
 				it.message,
@@ -110,7 +114,7 @@ class PahoMqttGateway(
 			runCatching {
 				client.subscribe(subscription.topicFilter, 0)
 			}.onFailure {
-				logger.warn("Could not subscribe to {}: {}", subscription.topicFilter, it.message)
+				logger.debug("Could not subscribe to {}: {}", subscription.topicFilter, it.message)
 			}
 		}
 	}

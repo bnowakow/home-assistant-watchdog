@@ -160,7 +160,16 @@ class NotificationService(
 			return
 		}
 		queries.findPushoverRecipients()
-			.filter { decision.problemType != NotificationProblemType.RECOVERY || it.notifyRecoveryEnabled }
+			.filter {
+				when (decision.problemType) {
+					NotificationProblemType.MISMATCH -> it.notifyMismatchEnabled
+					NotificationProblemType.LOW_BATTERY -> it.notifyLowBatteryEnabled
+					NotificationProblemType.OFFLINE_STALE -> it.notifyOfflineStaleEnabled
+					NotificationProblemType.RECOVERY -> it.notifyRecoveryEnabled
+					NotificationProblemType.FIX_SUCCESS -> it.notifyFixSuccessEnabled
+					NotificationProblemType.FIX_FAILURE -> it.notifyFixFailureEnabled
+				}
+			}
 			.forEach { recipient ->
 				runCatching {
 					pushoverClient.send(

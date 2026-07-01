@@ -45,7 +45,10 @@ class NotificationQueries(
 		jdbc.query(
 			"""
 			SELECT app_user_id, pushover_user_key_encrypted, pushover_user_key_suffix,
-			       pushover_device, notify_recovery_enabled, created_at, updated_at
+			       pushover_device, notify_mismatch_enabled, notify_low_battery_enabled,
+			       notify_offline_stale_enabled, notify_recovery_enabled,
+			       notify_fix_success_enabled, notify_fix_failure_enabled,
+			       created_at, updated_at
 			FROM notification_preference
 			WHERE app_user_id = :appUserId
 				AND provider = 'PUSHOVER'
@@ -59,7 +62,12 @@ class NotificationQueries(
 		pushoverUserKeyEncrypted: String,
 		pushoverUserKeySuffix: String,
 		pushoverDevices: Collection<String>,
+		notifyMismatchEnabled: Boolean,
+		notifyLowBatteryEnabled: Boolean,
+		notifyOfflineStaleEnabled: Boolean,
 		notifyRecoveryEnabled: Boolean,
+		notifyFixSuccessEnabled: Boolean,
+		notifyFixFailureEnabled: Boolean,
 	): NotificationPreference =
 		jdbc.query(
 			"""
@@ -69,7 +77,12 @@ class NotificationQueries(
 				pushover_user_key_encrypted,
 				pushover_user_key_suffix,
 				pushover_device,
-				notify_recovery_enabled
+				notify_mismatch_enabled,
+				notify_low_battery_enabled,
+				notify_offline_stale_enabled,
+				notify_recovery_enabled,
+				notify_fix_success_enabled,
+				notify_fix_failure_enabled
 			)
 			VALUES (
 				:appUserId,
@@ -77,23 +90,41 @@ class NotificationQueries(
 				:pushoverUserKeyEncrypted,
 				:pushoverUserKeySuffix,
 				:pushoverDevice,
-				:notifyRecoveryEnabled
+				:notifyMismatchEnabled,
+				:notifyLowBatteryEnabled,
+				:notifyOfflineStaleEnabled,
+				:notifyRecoveryEnabled,
+				:notifyFixSuccessEnabled,
+				:notifyFixFailureEnabled
 			)
 			ON CONFLICT (app_user_id) DO UPDATE
 			   SET pushover_user_key_encrypted = :pushoverUserKeyEncrypted,
 			       pushover_user_key_suffix = :pushoverUserKeySuffix,
 			       pushover_device = :pushoverDevice,
+			       notify_mismatch_enabled = :notifyMismatchEnabled,
+			       notify_low_battery_enabled = :notifyLowBatteryEnabled,
+			       notify_offline_stale_enabled = :notifyOfflineStaleEnabled,
 			       notify_recovery_enabled = :notifyRecoveryEnabled,
+			       notify_fix_success_enabled = :notifyFixSuccessEnabled,
+			       notify_fix_failure_enabled = :notifyFixFailureEnabled,
 			       updated_at = now()
 			RETURNING app_user_id, pushover_user_key_encrypted, pushover_user_key_suffix,
-			          pushover_device, notify_recovery_enabled, created_at, updated_at
+			          pushover_device, notify_mismatch_enabled, notify_low_battery_enabled,
+			          notify_offline_stale_enabled, notify_recovery_enabled,
+			          notify_fix_success_enabled, notify_fix_failure_enabled,
+			          created_at, updated_at
 			""".trimIndent(),
 			MapSqlParameterSource()
 				.addValue("appUserId", appUserId)
 				.addValue("pushoverUserKeyEncrypted", pushoverUserKeyEncrypted)
 				.addValue("pushoverUserKeySuffix", pushoverUserKeySuffix)
 				.addValue("pushoverDevice", PushoverDevices.format(pushoverDevices))
-				.addValue("notifyRecoveryEnabled", notifyRecoveryEnabled),
+				.addValue("notifyMismatchEnabled", notifyMismatchEnabled)
+				.addValue("notifyLowBatteryEnabled", notifyLowBatteryEnabled)
+				.addValue("notifyOfflineStaleEnabled", notifyOfflineStaleEnabled)
+				.addValue("notifyRecoveryEnabled", notifyRecoveryEnabled)
+				.addValue("notifyFixSuccessEnabled", notifyFixSuccessEnabled)
+				.addValue("notifyFixFailureEnabled", notifyFixFailureEnabled),
 			PREFERENCE_ROW_MAPPER,
 		).single()
 
@@ -104,7 +135,12 @@ class NotificationQueries(
 			       au.email,
 			       np.pushover_user_key_encrypted,
 			       np.pushover_device,
-			       np.notify_recovery_enabled
+			       np.notify_mismatch_enabled,
+			       np.notify_low_battery_enabled,
+			       np.notify_offline_stale_enabled,
+			       np.notify_recovery_enabled,
+			       np.notify_fix_success_enabled,
+			       np.notify_fix_failure_enabled
 			FROM notification_preference np
 			JOIN app_user au ON au.id = np.app_user_id
 			WHERE np.provider = 'PUSHOVER'
@@ -242,7 +278,12 @@ class NotificationQueries(
 				pushoverUserKeyEncrypted = rs.getString("pushover_user_key_encrypted"),
 				pushoverUserKeySuffix = rs.getString("pushover_user_key_suffix"),
 				pushoverDevices = PushoverDevices.parse(rs.getString("pushover_device")),
+				notifyMismatchEnabled = rs.getBoolean("notify_mismatch_enabled"),
+				notifyLowBatteryEnabled = rs.getBoolean("notify_low_battery_enabled"),
+				notifyOfflineStaleEnabled = rs.getBoolean("notify_offline_stale_enabled"),
 				notifyRecoveryEnabled = rs.getBoolean("notify_recovery_enabled"),
+				notifyFixSuccessEnabled = rs.getBoolean("notify_fix_success_enabled"),
+				notifyFixFailureEnabled = rs.getBoolean("notify_fix_failure_enabled"),
 				createdAt = rs.getTimestamp("created_at")?.toInstant(),
 				updatedAt = rs.getTimestamp("updated_at")?.toInstant(),
 			)
@@ -254,7 +295,12 @@ class NotificationQueries(
 				email = rs.getString("email"),
 				pushoverUserKeyEncrypted = rs.getString("pushover_user_key_encrypted"),
 				pushoverDevices = PushoverDevices.parse(rs.getString("pushover_device")),
+				notifyMismatchEnabled = rs.getBoolean("notify_mismatch_enabled"),
+				notifyLowBatteryEnabled = rs.getBoolean("notify_low_battery_enabled"),
+				notifyOfflineStaleEnabled = rs.getBoolean("notify_offline_stale_enabled"),
 				notifyRecoveryEnabled = rs.getBoolean("notify_recovery_enabled"),
+				notifyFixSuccessEnabled = rs.getBoolean("notify_fix_success_enabled"),
+				notifyFixFailureEnabled = rs.getBoolean("notify_fix_failure_enabled"),
 			)
 		}
 	}

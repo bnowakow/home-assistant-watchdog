@@ -24,7 +24,12 @@ class NotificationPreferenceService(
 			pushoverUserKeyEncrypted = encryptor.encrypt(userKey),
 			pushoverUserKeySuffix = userKey.takeLast(KEY_SUFFIX_LENGTH),
 			pushoverDevices = devices,
+			notifyMismatchEnabled = input.notifyMismatchEnabled,
+			notifyLowBatteryEnabled = input.notifyLowBatteryEnabled,
+			notifyOfflineStaleEnabled = input.notifyOfflineStaleEnabled,
 			notifyRecoveryEnabled = input.notifyRecoveryEnabled,
+			notifyFixSuccessEnabled = input.notifyFixSuccessEnabled,
+			notifyFixFailureEnabled = input.notifyFixFailureEnabled,
 		)
 	}
 
