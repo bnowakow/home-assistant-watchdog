@@ -121,6 +121,12 @@ class ChecksView(
 			.addColumn(ComponentRenderer { row -> statusCell(row.status) })
 			.setHeader("Status")
 			.setAutoWidth(true)
+		ruleResultsGrid
+			.addColumn(ComponentRenderer { row ->
+				row.fixStatus?.let { statusPill(it, PillStatus.SUCCESS) } ?: Span("-")
+			})
+			.setHeader("Fix")
+			.setAutoWidth(true)
 		ruleResultsGrid.addColumn { it.propertyPath ?: "-" }.setHeader("Property").setAutoWidth(true)
 		ruleResultsGrid.addColumn { it.endpoint ?: "-" }.setHeader("Endpoint")
 		ruleResultsGrid.addColumn { it.expectedValue?.toDisplayString() ?: "-" }.setHeader("Expected")
@@ -308,6 +314,7 @@ class ChecksView(
 				detailField("Device", row.deviceName),
 				detailField("Group", row.groupName),
 				detailField("Status", row.status.name),
+				detailField("Fix", row.fixStatus ?: "-"),
 			).apply {
 				setWidthFull()
 				isSpacing = true

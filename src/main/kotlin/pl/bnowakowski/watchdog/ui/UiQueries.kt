@@ -115,6 +115,15 @@ class UiQueries(
 				       dgr.endpoint,
 				       dgr.severity,
 				       rcr.status,
+				       CASE
+					       WHEN EXISTS (
+						       SELECT 1
+						       FROM fix_attempt fa
+						       WHERE fa.rule_check_result_id = rcr.id
+						         AND fa.status IN ('REQUESTED', 'CONFIRMED')
+					       ) THEN 'FIXED'
+					       ELSE NULL
+				       END AS fix_status,
 				       rcr.actual_value,
 				       rcr.expected_value,
 				       rcr.message
@@ -323,6 +332,7 @@ class UiQueries(
 			endpoint = getString("endpoint"),
 			severity = getString("severity"),
 			status = RuleCheckStatus.valueOf(getString("status")),
+			fixStatus = getString("fix_status"),
 			actualValue = getString("actual_value")?.let(objectMapper::readTree),
 			expectedValue = getString("expected_value")?.let(objectMapper::readTree),
 			message = getString("message"),
@@ -429,6 +439,7 @@ data class CheckRunRuleResultRow(
 	val endpoint: String?,
 	val severity: String,
 	val status: RuleCheckStatus,
+	val fixStatus: String?,
 	val actualValue: JsonNode?,
 	val expectedValue: JsonNode?,
 	val message: String?,
