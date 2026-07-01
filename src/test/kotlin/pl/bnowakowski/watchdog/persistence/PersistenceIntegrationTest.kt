@@ -103,8 +103,8 @@ class PersistenceIntegrationTest {
 			String::class.java,
 		)
 
-		assertTrue(versions.containsAll(listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")))
-		assertEquals(12, versions.size)
+		assertTrue(versions.containsAll(listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13")))
+		assertEquals(13, versions.size)
 		val retryDefaults = jdbc.queryForMap(
 			"""
 			SELECT

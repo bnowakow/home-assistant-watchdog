@@ -54,9 +54,9 @@ class DevicesView(
 				Button("Edit") { openEditor(device) },
 			)
 		}.setHeader("Actions").setAutoWidth(true)
-		grid.setSizeFull()
+		grid.height = "auto"
+		grid.setAllRowsVisible(true)
 		add(importDeviceEditor(), createDeviceEditor(), editor, grid)
-		expand(grid)
 		refresh()
 	}
 
@@ -173,7 +173,8 @@ class DevicesView(
 	}
 
 	private fun refresh() {
-		grid.setItems(deviceRepository.findAll().sortedBy { it.displayName })
+		val devices = deviceRepository.findAll().sortedBy { it.displayName }
+		grid.setItems(devices)
 	}
 
 	private fun statusFor(deviceId: Long?): String =
