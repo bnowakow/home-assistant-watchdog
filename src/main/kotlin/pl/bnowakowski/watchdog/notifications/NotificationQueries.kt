@@ -4,6 +4,9 @@
 package pl.bnowakowski.watchdog.notifications
 
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.sql.Types
 import org.springframework.jdbc.core.RowMapper
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
@@ -225,7 +228,7 @@ class NotificationQueries(
 				.addValue("severity", severity.name)
 				.addValue("message", message)
 				.addValue("providerResponse", providerResponse?.let(objectMapper::writeValueAsString))
-				.addValue("createdAt", createdAt),
+				.addValue("createdAt", createdAt.toUtcOffsetDateTime(), Types.TIMESTAMP_WITH_TIMEZONE),
 			keyHolder,
 			arrayOf("id"),
 		)
@@ -255,4 +258,7 @@ class NotificationQueries(
 			)
 		}
 	}
+
+	private fun Instant.toUtcOffsetDateTime(): OffsetDateTime =
+		OffsetDateTime.ofInstant(this, ZoneOffset.UTC)
 }
