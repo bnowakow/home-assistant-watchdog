@@ -44,7 +44,7 @@ class PahoMqttGateway(
 
 		client.setCallback(object : MqttCallbackExtended {
 			override fun connectComplete(reconnect: Boolean, serverURI: String?) {
-				logger.info("Connected to MQTT broker {} reconnect={}", serverURI, reconnect)
+				logger.debug("Connected to MQTT broker {} reconnect={}", serverURI, reconnect)
 				resubscribe()
 			}
 
@@ -69,11 +69,12 @@ class PahoMqttGateway(
 			client.connect(connectOptions()).waitForCompletion()
 			running = true
 		}.onFailure {
-			logger.debug(
+			logger.error(
 				"Could not connect to MQTT broker {}: {}; will retry in {}s. Set WATCHDOG_MQTT_ENABLED=false to disable MQTT locally.",
 				properties.brokerUri,
 				it.message,
 				properties.reconnectDelaySeconds,
+				it,
 			)
 			running = false
 			scheduleReconnect()

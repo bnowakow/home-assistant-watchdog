@@ -31,7 +31,7 @@ help:
 	@printf "    %-28s %s\n" "docker-down" "Stop and remove local infrastructure containers"
 	@printf "    %-28s %s\n" "docker-logs" "Show compose logs in follow mode"
 	@printf "    %-28s %s\n" "docker-springboot-logs" "Show application logs in follow mode"
-	@printf "    %-28s %s\n" "docker-upgrade" "Pull latest code, rebuild image, and switch Spring traffic after health check"
+	@printf "    %-28s %s\n" "docker-upgrade" "Pull latest code, prune Docker system data, rebuild image, and switch Spring traffic after health check"
 	@printf "    %-28s %s\n" "docker-upgrade-no-cache" "Pull latest code, rebuild without Docker cache, and switch after health check"
 	@printf "    %-28s %s\n" "sync-env-files" "Sync local .env to the remote server and verify byte-for-byte"
 	@printf "\n"
@@ -99,6 +99,7 @@ docker-app-logs: docker-springboot-logs
 
 docker-upgrade:
 	GIT_TERMINAL_PROMPT=0 git -c url."https://github.com/".insteadOf=git@github.com: pull --ff-only
+	docker system prune -f
 	$(MAKE) docker-data-permissions
 	docker compose -f compose.yaml up -d --build postgres springboot
 	docker compose -f compose.yaml logs -f springboot

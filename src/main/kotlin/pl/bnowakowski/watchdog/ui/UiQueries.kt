@@ -146,6 +146,7 @@ class UiQueries(
 				       NULL::TEXT AS endpoint,
 				       'INFO' AS severity,
 				       'SKIPPED' AS status,
+				       NULL::TEXT AS fix_status,
 				       NULL::JSONB AS actual_value,
 				       NULL::JSONB AS expected_value,
 				       'Device checks are skipped' AS message
