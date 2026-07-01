@@ -1,4 +1,4 @@
-.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-restore docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs sync-env-files app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
+.PHONY: help docker-up docker-dev-up docker-springboot-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-restore docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-springboot-logs docker-app-logs docker-upgrade docker-upgrade-no-cache sync-env-files app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
 
 -include .env
 
@@ -27,10 +27,12 @@ help:
 	@printf "\n"
 	@printf "  \033[1;94m%s\033[0m\n" "Docker"
 	@printf "    %-28s %s\n" "docker-up" "Start local infrastructure from compose.yaml"
-	@printf "    %-28s %s\n" "docker-app-up" "Build/start PostgreSQL and the Spring Boot container"
+	@printf "    %-28s %s\n" "docker-dev-up" "Build/start PostgreSQL and the Spring Boot container"
 	@printf "    %-28s %s\n" "docker-down" "Stop and remove local infrastructure containers"
 	@printf "    %-28s %s\n" "docker-logs" "Show compose logs in follow mode"
-	@printf "    %-28s %s\n" "docker-app-logs" "Show application logs in follow mode"
+	@printf "    %-28s %s\n" "docker-springboot-logs" "Show application logs in follow mode"
+	@printf "    %-28s %s\n" "docker-upgrade" "Pull latest code, rebuild image, and switch Spring traffic after health check"
+	@printf "    %-28s %s\n" "docker-upgrade-no-cache" "Pull latest code, rebuild without Docker cache, and switch after health check"
 	@printf "    %-28s %s\n" "sync-env-files" "Sync local .env to the remote server and verify byte-for-byte"
 	@printf "\n"
 	@printf "  \033[1;94m%s\033[0m\n" "PostgreSQL in Docker"
@@ -60,15 +62,23 @@ help:
 	@printf "\n"
 
 docker-up: docker-data-permissions
-	docker compose -f compose.yaml up -d postgres
+	docker compose -f compose.yaml up -d --build postgres springboot
 	@echo ""
 	@echo "Services started:"
 	@echo "  - PostgreSQL: localhost:$(POSTGRES_PORT)"
 	@echo "  - App:        http://localhost:$(APP_PORT) once Spring Boot is running"
 	@echo ""
 
-docker-app-up: docker-data-permissions
-	docker compose -f compose.yaml up -d --build postgres springboot
+docker-dev-up: docker-data-permissions
+	docker compose -f compose.yaml up -d postgres
+	@echo ""
+	@echo "Services started:"
+	@echo "  - PostgreSQL: localhost:$(POSTGRES_PORT)"
+	@echo ""
+
+docker-springboot-up: docker-dev-up
+
+docker-app-up: docker-springboot-up
 	@echo ""
 	@echo "Application started:"
 	@echo "  - App:        http://localhost:$(APP_PORT)"
@@ -82,7 +92,20 @@ docker-down:
 docker-logs:
 	docker compose -f compose.yaml logs -f
 
-docker-app-logs:
+docker-springboot-logs:
+	docker compose -f compose.yaml logs -f springboot
+
+docker-app-logs: docker-springboot-logs
+
+docker-upgrade: docker-data-permissions
+	git pull --ff-only
+	docker compose -f compose.yaml up -d --build postgres springboot
+	docker compose -f compose.yaml logs -f springboot
+
+docker-upgrade-no-cache: docker-data-permissions
+	git pull --ff-only
+	docker compose -f compose.yaml build --no-cache postgres springboot
+	docker compose -f compose.yaml up -d --force-recreate postgres springboot
 	docker compose -f compose.yaml logs -f springboot
 
 # Sync this laptop's .env to the remote server, then verify the remote file byte-for-byte.

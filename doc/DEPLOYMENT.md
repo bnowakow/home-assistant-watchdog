@@ -60,7 +60,7 @@ Enable writes gradually.
    path.
 4. Watch the fix attempts on the device detail page and application logs:
    ```sh
-   make docker-app-logs
+   make docker-springboot-logs
    ```
 
 Deployment defaults for fixes are `WATCHDOG_FIX_DEFAULT_RETRY_COUNT`,
@@ -98,7 +98,7 @@ If growth is too high, reduce `WATCHDOG_PARAMETER_HISTORY_RETENTION_DAYS` or kee
 2. Copy the repository, create a server-local `.env`, and keep secrets out of git.
 3. Start the full app stack:
    ```sh
-   make docker-app-up
+   make docker-dev-up
    ```
 4. Install daily PostgreSQL backups:
    ```sh
@@ -110,6 +110,11 @@ If growth is too high, reduce `WATCHDOG_PARAMETER_HISTORY_RETENTION_DAYS` or kee
    ```sh
    make docker-pg-restore
    ```
-6. Put a reverse proxy in front of `${APP_PORT}` if exposing the UI beyond localhost, enable
+6. To pull the latest code, rebuild, and follow Spring logs in one step, use:
+   ```sh
+   make docker-upgrade
+   ```
+   Use `make docker-upgrade-no-cache` if you suspect a bad Docker cache.
+7. Put a reverse proxy in front of `${APP_PORT}` if exposing the UI beyond localhost, enable
    `APP_SECURITY_ENABLED=true`, configure Google OAuth credentials, and set
    `SESSION_COOKIE_SECURE=true` when served over HTTPS.
