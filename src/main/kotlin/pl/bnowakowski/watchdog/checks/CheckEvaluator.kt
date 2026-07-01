@@ -79,28 +79,33 @@ class CheckEvaluator(
 	): DeviceSnapshot {
 		var snapshot = provider.readSnapshot(device)
 		repeat(properties.missingPropertyRetryCount) {
-			if (!hasMissingCheckedProperty(snapshot, activeRules)) {
+			val missingProperties = missingCheckedProperties(snapshot, activeRules)
+			if (missingProperties.isEmpty()) {
 				return snapshot
 			}
+			runCatching { provider.refreshProperties(device, missingProperties) }
 			sleeper.sleep(Duration.ofSeconds(properties.missingPropertyRetryDelaySeconds))
 			snapshot = provider.readSnapshot(device)
 		}
 		return snapshot
 	}
 
-	private fun hasMissingCheckedProperty(
+	private fun missingCheckedProperties(
 		snapshot: DeviceSnapshot,
 		activeRules: List<EffectiveRule>,
-	): Boolean =
-		activeRules.any { rule ->
+	): Set<String> =
+		activeRules.mapNotNull { rule ->
 			when (rule.rule.ruleType) {
-				RuleType.DESIRED_PROPERTY -> rule.propertyKey?.let { propertyValue(snapshot, it.propertyPath) == null } == true
-				RuleType.BATTERY_THRESHOLD -> snapshot.batteryLevel == null && propertyValue(snapshot, rule.rule.propertyPath ?: "battery") == null
+				RuleType.DESIRED_PROPERTY -> rule.propertyKey
+					?.propertyPath
+					?.takeIf { propertyValue(snapshot, it) == null }
+				RuleType.BATTERY_THRESHOLD -> (rule.rule.propertyPath ?: "battery")
+					.takeIf { snapshot.batteryLevel == null && propertyValue(snapshot, it) == null }
 				RuleType.AVAILABILITY,
 				RuleType.FRESHNESS,
-				-> false
+				-> null
 			}
-		}
+		}.toSet()
 
 	private fun evaluateRule(
 		effectiveRule: EffectiveRule,
@@ -216,19 +221,32 @@ class CheckEvaluator(
 			status = if (matches) RuleCheckStatus.MATCH else RuleCheckStatus.MISMATCH,
 			actualValue = actual,
 			expectedValue = expected,
-			message = if (matches) null else "Value at $propertyPath does not satisfy ${rule.rule.comparisonOperator}",
+			message = if (matches) null else desiredPropertyMismatchMessage(propertyPath, rule.rule.comparisonOperator, expected, actual),
 		)
 	}
+
+	private fun desiredPropertyMismatchMessage(
+		propertyPath: String,
+		operator: ComparisonOperator,
+		expected: JsonNode,
+		actual: JsonNode,
+	): String =
+		"Value at $propertyPath does not satisfy $operator; expected ${expected.toJsonString()}, received ${actual.toJsonString()}"
+
+	private fun JsonNode.toJsonString(): String = toString()
 
 	private fun propertyValue(snapshot: DeviceSnapshot, propertyPath: String): JsonNode? {
 		snapshot.properties.entries
 			.firstOrNull { it.key.propertyPath == propertyPath }
-			?.let { return it.value }
+			?.let { return it.value.presentValue() }
 
 		return propertyPath.split('.').fold(snapshot.payload as JsonNode?) { node, part ->
 			node?.get(part)
-		}
+		}.presentValue()
 	}
+
+	private fun JsonNode?.presentValue(): JsonNode? =
+		this?.takeUnless { it.isNull }
 
 	private fun compareJson(
 		actual: JsonNode,

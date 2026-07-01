@@ -44,9 +44,9 @@ data class DeviceGroupRule(
 	@Column("cooldown_seconds")
 	val cooldownSeconds: Int = 86_400,
 	@Column("retry_count")
-	val retryCount: Int = 3,
+	val retryCount: Int = 1,
 	@Column("retry_delay_seconds")
-	val retryDelaySeconds: Int = 60,
+	val retryDelaySeconds: Int = 10,
 	@Column("missing_property_retry_count")
 	val missingPropertyRetryCount: Int = 3,
 	@Column("missing_property_retry_delay_seconds")

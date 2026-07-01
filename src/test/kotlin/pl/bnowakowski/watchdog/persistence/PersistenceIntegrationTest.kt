@@ -29,6 +29,9 @@ import pl.bnowakowski.watchdog.domain.PowerSource
 import pl.bnowakowski.watchdog.domain.ProviderType
 import pl.bnowakowski.watchdog.domain.RuleCheckStatus
 import pl.bnowakowski.watchdog.domain.RuleType
+import pl.bnowakowski.watchdog.history.ParameterHistoryEntry
+import pl.bnowakowski.watchdog.history.ParameterHistoryQueries
+import pl.bnowakowski.watchdog.domain.ParameterHistorySource
 import tools.jackson.databind.ObjectMapper
 
 @SpringBootTest(
@@ -56,6 +59,9 @@ class PersistenceIntegrationTest {
 
 	@Autowired
 	private lateinit var checkRunQueries: CheckRunQueries
+
+	@Autowired
+	private lateinit var parameterHistoryQueries: ParameterHistoryQueries
 
 	@Autowired
 	private lateinit var deviceGroupMembershipQueries: DeviceGroupMembershipQueries
@@ -97,8 +103,19 @@ class PersistenceIntegrationTest {
 			String::class.java,
 		)
 
-		assertTrue(versions.containsAll(listOf("1", "2", "3", "4", "5", "6", "7", "8")))
-		assertEquals(8, versions.size)
+		assertTrue(versions.containsAll(listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12")))
+		assertEquals(12, versions.size)
+		val retryDefaults = jdbc.queryForMap(
+			"""
+			SELECT
+				column_default
+			FROM information_schema.columns
+			WHERE table_name = 'device_group_rule'
+			  AND column_name = 'retry_count'
+			""".trimIndent(),
+			emptyMap<String, Any?>(),
+		)
+		assertEquals("1", retryDefaults["column_default"].toString())
 	}
 
 	@Test
@@ -158,6 +175,33 @@ class PersistenceIntegrationTest {
 		val lock = deviceGroupMembershipQueries.findModelLock(requireNotNull(savedGroup.id))
 		assertEquals(ProviderType.ZIGBEE2MQTT, lock?.providerType)
 		assertEquals("WS-EUK04", lock?.modelKey)
+	}
+
+	@Test
+	fun `parameter history cleanup deletes rows older than cutoff`() {
+		val savedDevice = deviceRepository.save(
+			Device(
+				providerType = ProviderType.ZIGBEE2MQTT,
+				providerDeviceId = "0x54ef4410005e77ba",
+				ieeeAddress = "0x54ef4410005e77ba",
+				friendlyName = "bedroom_switch",
+				displayName = "Bedroom Switch",
+				modelKey = "TS0012",
+			),
+		)
+		val deviceId = requireNotNull(savedDevice.id)
+		parameterHistoryQueries.insert(parameterHistoryEntry(deviceId, Instant.parse("2025-06-30T19:59:59Z")))
+		parameterHistoryQueries.insert(parameterHistoryEntry(deviceId, Instant.parse("2025-06-30T20:00:01Z")))
+
+		val deleted = parameterHistoryQueries.deleteObservedBefore(Instant.parse("2025-06-30T20:00:00Z"))
+		val remaining = jdbc.queryForObject(
+			"SELECT count(*) FROM device_parameter_history",
+			emptyMap<String, Any?>(),
+			Long::class.java,
+		)
+
+		assertEquals(1, deleted)
+		assertEquals(1, remaining)
 	}
 
 	@Test
@@ -237,6 +281,69 @@ class PersistenceIntegrationTest {
 		assertEquals("off", persisted["actual_value"])
 		assertEquals("on", persisted["expected_value"])
 	}
+
+	@Test
+	fun `check run recovery marks stale running runs stale`() {
+		val staleRunId = checkRunQueries.createRun(CheckRunTriggerType.MANUAL, Instant.parse("2026-06-30T18:00:00Z"))
+		val completedRunId = checkRunQueries.createRun(CheckRunTriggerType.SCHEDULED, Instant.parse("2026-06-30T18:10:00Z"))
+		checkRunQueries.completeRun(
+			checkRunId = completedRunId,
+			status = CheckRunStatus.COMPLETED,
+			finishedAt = Instant.parse("2026-06-30T18:11:00Z"),
+			summary = objectMapper.createObjectNode().put("devices", 0),
+		)
+
+		val recovered = checkRunQueries.markRunningRunsStale(
+			finishedAt = Instant.parse("2026-06-30T19:00:00Z"),
+			summary = objectMapper.createObjectNode()
+				.put("error", "Application stopped before check run completed")
+				.put("recovered_on_startup", true),
+		)
+
+		assertEquals(1, recovered)
+		val staleRun = jdbc.queryForMap(
+			"""
+			SELECT status, finished_at, summary
+			FROM check_run
+			WHERE id = :id
+			""".trimIndent(),
+			mapOf("id" to staleRunId),
+		)
+		val completedRun = jdbc.queryForMap(
+			"""
+			SELECT status
+			FROM check_run
+			WHERE id = :id
+			""".trimIndent(),
+			mapOf("id" to completedRunId),
+		)
+
+		assertEquals(CheckRunStatus.STALE.name, staleRun["status"])
+		assertNotNull(staleRun["finished_at"])
+		assertEquals("Application stopped before check run completed", objectMapper.readTree(staleRun["summary"].toString()).get("error").textValue())
+		assertEquals(CheckRunStatus.COMPLETED.name, completedRun["status"])
+	}
+
+	private fun parameterHistoryEntry(
+		deviceId: Long,
+		observedAt: Instant,
+	): ParameterHistoryEntry =
+		ParameterHistoryEntry(
+			deviceId = deviceId,
+			ruleId = null,
+			providerType = ProviderType.ZIGBEE2MQTT,
+			propertyPath = "battery",
+			endpoint = null,
+			valueJson = objectMapper.readTree("42"),
+			valueText = "42",
+			valueNumber = 42.0,
+			valueBoolean = null,
+			previousValueJson = null,
+			changed = true,
+			source = ParameterHistorySource.CHECK,
+			observedAt = observedAt,
+			checkRunId = null,
+		)
 
 	companion object {
 		@Container

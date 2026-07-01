@@ -3,6 +3,7 @@ package pl.bnowakowski.watchdog.ui
 import com.vaadin.flow.component.grid.Grid
 import com.vaadin.flow.component.html.H2
 import com.vaadin.flow.component.notification.Notification
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout
 import com.vaadin.flow.component.orderedlayout.VerticalLayout
 import com.vaadin.flow.component.checkbox.Checkbox
 import com.vaadin.flow.component.button.Button
@@ -33,6 +34,16 @@ class NotificationsView(
 		val devices = TextField("Device targets").apply {
 			value = preference?.pushoverDevices?.joinToString(", ").orEmpty()
 		}
+		val importDevices = Button("Import devices from Pushover") {
+			runCatching {
+				preferenceService.importPushoverDevices(userKey.value)
+			}.onSuccess { importedDevices ->
+				devices.value = importedDevices.joinToString(", ")
+				Notification.show("Imported ${importedDevices.size} Pushover devices")
+			}.onFailure {
+				Notification.show("Could not import Pushover devices: ${it.message}")
+			}
+		}
 		val recovery = Checkbox("Recovery notifications").apply {
 			value = preference?.notifyRecoveryEnabled ?: true
 		}
@@ -55,7 +66,7 @@ class NotificationsView(
 			}
 		}
 		val grid = Grid(NotificationRow::class.java, false).apply {
-			addColumn(NotificationRow::createdAt).setHeader("Created")
+			addColumn(UiDateTimes.relativeRenderer<NotificationRow> { it.createdAt }).setHeader("Created")
 			addColumn(NotificationRow::status).setHeader("Status")
 			addColumn(NotificationRow::severity).setHeader("Severity")
 			addColumn { it.deviceName ?: it.deviceId?.toString() ?: "-" }.setHeader("Device")
@@ -67,7 +78,7 @@ class NotificationsView(
 		add(
 			H2("Pushover"),
 			userKey,
-			devices,
+			HorizontalLayout(devices, importDevices),
 			recovery,
 			save,
 			H2("History"),

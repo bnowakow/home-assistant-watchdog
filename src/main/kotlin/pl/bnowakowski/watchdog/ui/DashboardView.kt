@@ -7,15 +7,18 @@ import com.vaadin.flow.component.html.Span
 import com.vaadin.flow.component.notification.Notification
 import com.vaadin.flow.component.orderedlayout.HorizontalLayout
 import com.vaadin.flow.component.orderedlayout.VerticalLayout
+import com.vaadin.flow.component.shared.Tooltip
 import com.vaadin.flow.router.Route
 import jakarta.annotation.security.PermitAll
-import pl.bnowakowski.watchdog.checks.CheckRunService
+import pl.bnowakowski.watchdog.checks.CheckRunBackgroundRunner
+import pl.bnowakowski.watchdog.checks.CheckRunStartResult
+import pl.bnowakowski.watchdog.domain.CheckRunTriggerType
 
-@Route("", layout = MainLayout::class)
+@Route("dashboard", layout = MainLayout::class)
 @PermitAll
 class DashboardView(
 	private val uiQueries: UiQueries,
-	private val checkRunService: CheckRunService,
+	private val checkRunBackgroundRunner: CheckRunBackgroundRunner,
 ) : VerticalLayout() {
 	private val statusGrid = Grid(DeviceStatusRow::class.java, false)
 
@@ -24,7 +27,7 @@ class DashboardView(
 		statusGrid.addColumn(DeviceStatusRow::displayName).setHeader("Device").setAutoWidth(true)
 		statusGrid.addColumn(DeviceStatusRow::criticality).setHeader("Criticality")
 		statusGrid.addColumn { it.status ?: "UNKNOWN" }.setHeader("Latest status")
-		statusGrid.addColumn { it.checkedAt?.toString() ?: "-" }.setHeader("Checked")
+		statusGrid.addColumn(UiDateTimes.relativeRenderer<DeviceStatusRow> { it.checkedAt }).setHeader("Checked")
 		statusGrid.addColumn { if (it.enabled) "Enabled" else "Disabled" }.setHeader("Monitoring")
 		statusGrid.setSizeFull()
 		refresh()
@@ -40,13 +43,21 @@ class DashboardView(
 				summary("Healthy", statuses.count { it.status == "HEALTHY" }.toString()),
 				summary("Degraded", statuses.count { it.status == "DEGRADED" }.toString()),
 				summary("Offline", statuses.count { it.status == "OFFLINE" }.toString()),
+				summary("Skipped", statuses.count { it.status == "SKIPPED" }.toString()),
 				summary("Unknown", statuses.count { it.status == null || it.status == "UNKNOWN" }.toString()),
 			),
 			HorizontalLayout(
-				Span("Last check: ${lastRun?.status ?: "none"} ${lastRun?.finishedAt ?: lastRun?.startedAt ?: ""}"),
+				Span("Last check: ${lastRun?.status ?: "none"} ${UiDateTimes.relativeText(lastRun?.finishedAt ?: lastRun?.startedAt)}").apply {
+					lastRun?.let { Tooltip.forComponent(this).withText(UiDateTimes.timestampText(it.finishedAt ?: it.startedAt)) }
+				},
 				Button("Run check now") {
-					runCatching { checkRunService.runManualCheck() }
-						.onSuccess { Notification.show("Check run ${it.checkRunId} completed with ${it.status}") }
+					runCatching { checkRunBackgroundRunner.startCheck(CheckRunTriggerType.MANUAL) }
+						.onSuccess {
+							when (it) {
+								CheckRunStartResult.STARTED -> Notification.show("Check started")
+								CheckRunStartResult.ALREADY_RUNNING -> Notification.show("A check is already running")
+							}
+						}
 						.onFailure { Notification.show("Check failed: ${it.message}") }
 					refresh()
 				},
@@ -56,8 +67,8 @@ class DashboardView(
 				addColumn(DeviceStatusRow::displayName).setHeader("Device")
 				addColumn(DeviceStatusRow::criticality).setHeader("Criticality")
 				addColumn { it.status ?: "UNKNOWN" }.setHeader("Status")
-				addColumn { it.lastSeenAt?.toString() ?: "-" }.setHeader("Last seen")
-				setItems(statuses.filter { it.criticality == "CRITICAL" && it.status != "HEALTHY" })
+				addColumn(UiDateTimes.relativeRenderer<DeviceStatusRow> { it.lastSeenAt }).setHeader("Last seen")
+				setItems(statuses.filter { it.criticality == "CRITICAL" && it.status !in setOf("HEALTHY", "SKIPPED") })
 				setAllRowsVisible(true)
 			},
 			H2("Devices"),

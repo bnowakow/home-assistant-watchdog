@@ -14,6 +14,8 @@ interface DeviceProvider {
 
 	fun readSnapshot(device: Device): DeviceSnapshot
 
+	fun refreshProperties(device: Device, propertyPaths: Set<String>) = Unit
+
 	fun applyDesiredState(
 		device: Device,
 		property: DevicePropertyRef,

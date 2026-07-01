@@ -28,6 +28,12 @@ class NotificationPreferenceService(
 		)
 	}
 
+	fun importPushoverDevices(userKey: String?): List<String> {
+		val trimmedUserKey = userKey?.trim()?.takeIf { it.isNotBlank() }
+			?: throw IllegalArgumentException("Pushover user key is required")
+		return pushoverClient.validateUser(trimmedUserKey, emptyList()).devices
+	}
+
 	private companion object {
 		const val KEY_SUFFIX_LENGTH = 4
 	}

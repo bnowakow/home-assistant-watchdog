@@ -67,6 +67,97 @@ class UiQueries(
 			mapOf("limit" to limit),
 		) { rs, _ -> rs.toCheckRunRow() }
 
+	fun checkRunDeviceResults(checkRunId: Long): List<CheckRunDeviceResultRow> =
+		jdbc.query(
+			"""
+			SELECT dcr.id,
+			       dcr.device_id,
+			       d.display_name,
+			       d.criticality,
+			       dcr.status,
+			       dcr.checked_at,
+			       COUNT(rcr.id) AS rule_count,
+			       COUNT(rcr.id) FILTER (WHERE rcr.status = 'MATCH') AS matched_rule_count,
+			       COUNT(rcr.id) FILTER (WHERE rcr.status = 'MISMATCH') AS mismatched_rule_count,
+			       COUNT(rcr.id) FILTER (WHERE rcr.status = 'ERROR') AS error_rule_count,
+			       COUNT(rcr.id) FILTER (WHERE rcr.status = 'SKIPPED') AS skipped_rule_count
+			FROM device_check_result dcr
+			JOIN device d ON d.id = dcr.device_id
+			LEFT JOIN rule_check_result rcr ON rcr.device_check_result_id = dcr.id
+			WHERE dcr.check_run_id = :checkRunId
+			GROUP BY dcr.id, dcr.device_id, d.display_name, d.criticality, dcr.status, dcr.checked_at
+			ORDER BY
+				CASE dcr.status
+					WHEN 'OFFLINE' THEN 0
+					WHEN 'DEGRADED' THEN 1
+					WHEN 'UNKNOWN' THEN 2
+					WHEN 'SKIPPED' THEN 3
+					ELSE 4
+				END,
+				d.display_name,
+				dcr.id
+			""".trimIndent(),
+			mapOf("checkRunId" to checkRunId),
+		) { rs, _ -> rs.toCheckRunDeviceResultRow() }
+
+	fun checkRunRuleResults(checkRunId: Long): List<CheckRunRuleResultRow> =
+		jdbc.query(
+			"""
+			SELECT *
+			FROM (
+				SELECT rcr.id,
+				       d.display_name,
+				       d.criticality,
+				       dg.name AS group_name,
+				       rcr.rule_id,
+				       dgr.rule_type,
+				       dgr.property_path,
+				       dgr.endpoint,
+				       dgr.severity,
+				       rcr.status,
+				       rcr.actual_value,
+				       rcr.expected_value,
+				       rcr.message
+				FROM rule_check_result rcr
+				JOIN device_check_result dcr ON dcr.id = rcr.device_check_result_id
+				JOIN device d ON d.id = dcr.device_id
+				JOIN device_group_rule dgr ON dgr.id = rcr.rule_id
+				JOIN device_group dg ON dg.id = dgr.group_id
+				WHERE dcr.check_run_id = :checkRunId
+
+				UNION ALL
+
+				SELECT -dcr.id AS id,
+				       d.display_name,
+				       d.criticality,
+				       '-' AS group_name,
+				       NULL::BIGINT AS rule_id,
+				       'DEVICE_SKIPPED' AS rule_type,
+				       NULL::TEXT AS property_path,
+				       NULL::TEXT AS endpoint,
+				       'INFO' AS severity,
+				       'SKIPPED' AS status,
+				       NULL::JSONB AS actual_value,
+				       NULL::JSONB AS expected_value,
+				       'Device checks are skipped' AS message
+				FROM device_check_result dcr
+				JOIN device d ON d.id = dcr.device_id
+				WHERE dcr.check_run_id = :checkRunId
+				  AND dcr.status = 'SKIPPED'
+			) results
+			ORDER BY
+				CASE status
+					WHEN 'ERROR' THEN 0
+					WHEN 'MISMATCH' THEN 1
+					WHEN 'SKIPPED' THEN 2
+					ELSE 3
+				END,
+				display_name,
+				id
+			""".trimIndent(),
+			mapOf("checkRunId" to checkRunId),
+		) { rs, _ -> rs.toCheckRunRuleResultRow() }
+
 	fun groupMemberships(deviceId: Long): List<GroupMembershipRow> =
 		jdbc.query(
 			"""
@@ -205,6 +296,38 @@ class UiQueries(
 			summary = getString("summary")?.let(objectMapper::readTree),
 		)
 
+	private fun ResultSet.toCheckRunDeviceResultRow() =
+		CheckRunDeviceResultRow(
+			id = getLong("id"),
+			deviceId = getLong("device_id"),
+			deviceName = getString("display_name"),
+			criticality = getString("criticality"),
+			status = DeviceCheckStatus.valueOf(getString("status")),
+			checkedAt = getTimestamp("checked_at").toInstant(),
+			ruleCount = getInt("rule_count"),
+			matchedRuleCount = getInt("matched_rule_count"),
+			mismatchedRuleCount = getInt("mismatched_rule_count"),
+			errorRuleCount = getInt("error_rule_count"),
+			skippedRuleCount = getInt("skipped_rule_count"),
+		)
+
+	private fun ResultSet.toCheckRunRuleResultRow() =
+		CheckRunRuleResultRow(
+			id = getLong("id"),
+			deviceName = getString("display_name"),
+			criticality = getString("criticality"),
+			groupName = getString("group_name"),
+			ruleId = getLong("rule_id").takeUnless { wasNull() },
+			ruleType = getString("rule_type"),
+			propertyPath = getString("property_path"),
+			endpoint = getString("endpoint"),
+			severity = getString("severity"),
+			status = RuleCheckStatus.valueOf(getString("status")),
+			actualValue = getString("actual_value")?.let(objectMapper::readTree),
+			expectedValue = getString("expected_value")?.let(objectMapper::readTree),
+			message = getString("message"),
+		)
+
 	private fun ResultSet.toGroupMembershipRow() =
 		GroupMembershipRow(
 			id = getLong("id"),
@@ -279,6 +402,36 @@ data class CheckRunRow(
 	val startedAt: Instant,
 	val finishedAt: Instant?,
 	val summary: JsonNode?,
+)
+
+data class CheckRunDeviceResultRow(
+	val id: Long,
+	val deviceId: Long,
+	val deviceName: String,
+	val criticality: String,
+	val status: DeviceCheckStatus,
+	val checkedAt: Instant,
+	val ruleCount: Int,
+	val matchedRuleCount: Int,
+	val mismatchedRuleCount: Int,
+	val errorRuleCount: Int,
+	val skippedRuleCount: Int,
+)
+
+data class CheckRunRuleResultRow(
+	val id: Long,
+	val deviceName: String,
+	val criticality: String,
+	val groupName: String,
+	val ruleId: Long?,
+	val ruleType: String,
+	val propertyPath: String?,
+	val endpoint: String?,
+	val severity: String,
+	val status: RuleCheckStatus,
+	val actualValue: JsonNode?,
+	val expectedValue: JsonNode?,
+	val message: String?,
 )
 
 data class GroupMembershipRow(

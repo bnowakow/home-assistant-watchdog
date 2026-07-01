@@ -10,7 +10,6 @@ import com.vaadin.flow.component.orderedlayout.VerticalLayout
 import com.vaadin.flow.component.textfield.TextField
 import com.vaadin.flow.router.Route
 import jakarta.annotation.security.PermitAll
-import org.springframework.data.repository.findByIdOrNull
 import pl.bnowakowski.watchdog.domain.Criticality
 import pl.bnowakowski.watchdog.domain.Device
 import pl.bnowakowski.watchdog.domain.PowerSource
@@ -28,6 +27,10 @@ class DevicesView(
 	private val uiQueries: UiQueries,
 ) : VerticalLayout() {
 	private val grid = Grid(Device::class.java, false)
+	private val editor = VerticalLayout().apply {
+		setWidthFull()
+		isVisible = false
+	}
 
 	init {
 		setSizeFull()
@@ -39,7 +42,7 @@ class DevicesView(
 		grid.addColumn(Device::criticality).setHeader("Criticality")
 		grid.addColumn { batteryFor(it.id) }.setHeader("Battery")
 		grid.addColumn { statusFor(it.id) }.setHeader("Availability")
-		grid.addColumn { it.lastSeenAt?.toString() ?: "-" }.setHeader("Last seen").setAutoWidth(true)
+		grid.addColumn(UiDateTimes.relativeRenderer<Device> { it.lastSeenAt }).setHeader("Last seen").setAutoWidth(true)
 		grid.addColumn { if (it.enabled) "Enabled" else "Disabled" }.setHeader("Monitoring")
 		grid.addComponentColumn { device ->
 			HorizontalLayout(
@@ -52,7 +55,7 @@ class DevicesView(
 			)
 		}.setHeader("Actions").setAutoWidth(true)
 		grid.setSizeFull()
-		add(importDeviceEditor(), createDeviceEditor(), grid)
+		add(importDeviceEditor(), createDeviceEditor(), editor, grid)
 		expand(grid)
 		refresh()
 	}
@@ -144,6 +147,7 @@ class DevicesView(
 	}
 
 	private fun openEditor(device: Device) {
+		editor.removeAll()
 		val name = TextField("Display name").apply { value = device.displayName }
 		val power = ComboBox<PowerSource>("Power").apply {
 			setItems(*PowerSource.entries.toTypedArray())
@@ -164,7 +168,8 @@ class DevicesView(
 			Notification.show("Device saved")
 			refresh()
 		}
-		add(HorizontalLayout(name, power, criticality, save))
+		editor.add(HorizontalLayout(name, power, criticality, save))
+		editor.isVisible = true
 	}
 
 	private fun refresh() {

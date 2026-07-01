@@ -33,6 +33,8 @@ data class Device(
 	val powerSource: PowerSource = PowerSource.UNKNOWN,
 	val criticality: Criticality = Criticality.NORMAL,
 	val enabled: Boolean = true,
+	@Column("skip_checks")
+	val skipChecks: Boolean = false,
 	@Column("provider_metadata")
 	val providerMetadata: JsonNode = JsonDefaults.emptyObject(),
 	@Column("last_seen_at")

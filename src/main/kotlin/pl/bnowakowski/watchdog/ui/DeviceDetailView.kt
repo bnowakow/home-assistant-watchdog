@@ -10,6 +10,7 @@ import com.vaadin.flow.router.BeforeEnterEvent
 import com.vaadin.flow.router.BeforeEnterObserver
 import com.vaadin.flow.router.Route
 import jakarta.annotation.security.PermitAll
+import java.time.Instant
 import org.springframework.data.repository.findByIdOrNull
 import pl.bnowakowski.watchdog.persistence.DeviceRepository
 import pl.bnowakowski.watchdog.rules.EffectiveRuleResolver
@@ -66,7 +67,12 @@ class DeviceDetailView(
 			} else {
 				rows.first()::class.java.declaredFields.forEach { field ->
 					field.isAccessible = true
-					addColumn { row -> field.get(row)?.toString() ?: "-" }.setHeader(field.name)
+					addComponentColumn { row ->
+						when (val value = field.get(row)) {
+							is Instant -> UiDateTimes.relativeCell(value)
+							else -> Span(value?.toString() ?: "-")
+						}
+					}.setHeader(field.name)
 				}
 			}
 			setItems(rows)

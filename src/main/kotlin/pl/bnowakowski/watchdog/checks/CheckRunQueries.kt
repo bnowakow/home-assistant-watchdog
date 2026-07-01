@@ -77,6 +77,27 @@ class CheckRunQueries(
 		)
 	}
 
+	fun markRunningRunsStale(
+		finishedAt: Instant,
+		summary: JsonNode,
+	): Int =
+		jdbc.update(
+			"""
+			UPDATE check_run
+			SET status = :staleStatus,
+				finished_at = :finishedAt,
+				summary = CAST(:summary AS jsonb)
+			WHERE status = :runningStatus
+			  AND finished_at IS NULL
+			""".trimIndent(),
+			mapOf(
+				"staleStatus" to CheckRunStatus.STALE.name,
+				"runningStatus" to CheckRunStatus.RUNNING.name,
+				"finishedAt" to finishedAt.toSqlTimestamp(),
+				"summary" to objectMapper.writeValueAsString(summary),
+			),
+		)
+
 	fun insertDeviceResult(
 		checkRunId: Long,
 		deviceId: Long,
@@ -158,6 +179,7 @@ class CheckRunQueries(
 			powerSource = PowerSource.valueOf(getString("power_source")),
 			criticality = Criticality.valueOf(getString("criticality")),
 			enabled = getBoolean("enabled"),
+			skipChecks = getBoolean("skip_checks"),
 			providerMetadata = jsonNode(getString("provider_metadata")) ?: JsonDefaults.emptyObject(),
 			lastSeenAt = getTimestamp("last_seen_at")?.toInstant(),
 			createdAt = getTimestamp("created_at")?.toInstant() ?: Instant.EPOCH,

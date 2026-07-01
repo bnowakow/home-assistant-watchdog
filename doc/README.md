@@ -36,6 +36,11 @@ Project documentation, specifications, and implementation plans.
   CA/certificate into the JVM truststore. As a local escape hatch, set
   `WATCHDOG_HOME_ASSISTANT_SKIP_CERTIFICATE_CHECKS=true` to skip Home Assistant certificate
   validation; keep it disabled outside trusted local networks.
+- Runtime scheduling can be disabled independently from the checker with
+  `WATCHDOG_CHECK_SCHEDULED_ENABLED=false`. Set `WATCHDOG_CHECK_RUN_ON_STARTUP=true` to queue one
+  scheduled check when the application is ready; `WATCHDOG_CHECK_RUN_TIMEOUT` bounds each run.
+- Default fix cooldowns use `WATCHDOG_FIX_DEFAULT_COOLDOWN_SECONDS`. Rule-level cooldown,
+  retry, and missing-property retry columns can override the deployment defaults.
 - `make docker-pg-backup` dumps the Compose PostgreSQL database into
   `docker-data/backup/postgres/`.
 - `make install-pg-backup-cron` installs a daily database backup cron job for the current user.

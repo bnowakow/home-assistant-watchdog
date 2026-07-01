@@ -129,7 +129,7 @@ class NotificationServiceTest {
 			pushoverClient = client,
 			notificationProperties = NotificationProperties(
 				enabled = true,
-				encryptionKey = "1234567890123456",
+				pushoverUserKeyEncryptionSecret = "1234567890123456",
 				pushover = NotificationProperties.Pushover(appToken = "app-token"),
 			),
 			deliveryProperties = NotificationDeliveryProperties(defaultCooldownSeconds = cooldownSeconds),

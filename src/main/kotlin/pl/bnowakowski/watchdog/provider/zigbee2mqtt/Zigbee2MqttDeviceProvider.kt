@@ -58,6 +58,18 @@ class Zigbee2MqttDeviceProvider(
 		)
 	}
 
+	override fun refreshProperties(device: Device, propertyPaths: Set<String>) {
+		if (propertyPaths.isEmpty()) {
+			return
+		}
+		val mqtt = mqttGateway ?: return
+		val discoveredDevice = stateCache.discoveredDeviceByIeeeAddress(device.providerDeviceId) ?: return
+		val payload = objectMapper.createObjectNode()
+		propertyPaths.forEach { payload.put(it, "") }
+		val topic = "${properties.normalizedBaseTopic()}/${discoveredDevice.friendlyName}/get"
+		mqtt.publish(topic, objectMapper.writeValueAsBytes(payload))
+	}
+
 	override fun applyDesiredState(
 		device: Device,
 		property: DevicePropertyRef,

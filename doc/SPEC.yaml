@@ -90,6 +90,10 @@ x-provider-model:
       - name: applyDesiredState
         input: Device, DevicePropertyRef, desired JSON value
         returns: FixAttemptResult
+      - name: refreshProperties
+        input: Device, set of property paths
+        returns: Unit
+        description: Optional provider hook used before retrying missing checked properties.
       - name: supportedProperties
         input: Device
         returns: List<PropertyMetadata>
@@ -354,9 +358,60 @@ x-database:
           type: BOOLEAN NOT NULL DEFAULT FALSE
         - name: notify_on_fix_failure
           type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: notify_on_low_battery
+          type: BOOLEAN NOT NULL DEFAULT FALSE
+        - name: notify_on_offline_stale
+          type: BOOLEAN NOT NULL DEFAULT FALSE
+        - name: notify_on_recovery
+          type: BOOLEAN NOT NULL DEFAULT TRUE
         - name: cooldown_seconds
-          type: INTEGER NOT NULL DEFAULT 3600
+          type: INTEGER NOT NULL DEFAULT 86400
+        - name: retry_count
+          type: INTEGER NOT NULL DEFAULT 1
+        - name: retry_delay_seconds
+          type: INTEGER NOT NULL DEFAULT 10
+        - name: missing_property_retry_count
+          type: INTEGER NOT NULL DEFAULT 3
+        - name: missing_property_retry_delay_seconds
+          type: INTEGER NOT NULL DEFAULT 10
         - name: enabled
+          type: BOOLEAN NOT NULL DEFAULT TRUE
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+        - name: updated_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+    - name: app_user
+      description: Application user record for server-side UI authorization.
+      columns:
+        - name: id
+          type: BIGSERIAL PRIMARY KEY
+        - name: email
+          type: VARCHAR(254) NOT NULL UNIQUE
+        - name: role
+          type: VARCHAR(16) NOT NULL
+          allowedValues: [ADMIN, USER]
+        - name: status
+          type: VARCHAR(16) NOT NULL DEFAULT 'ACTIVE'
+          allowedValues: [ACTIVE, DISABLED]
+        - name: created_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+        - name: updated_at
+          type: TIMESTAMPTZ NOT NULL DEFAULT now()
+    - name: notification_preference
+      description: Per-user notification target and recovery-notification settings.
+      columns:
+        - name: app_user_id
+          type: BIGINT PRIMARY KEY REFERENCES app_user(id)
+        - name: provider
+          type: VARCHAR(32) NOT NULL DEFAULT 'PUSHOVER'
+          allowedValues: [PUSHOVER]
+        - name: pushover_user_key_encrypted
+          type: TEXT NULL
+        - name: pushover_user_key_suffix
+          type: VARCHAR(12) NULL
+        - name: pushover_device
+          type: VARCHAR(128) NULL
+        - name: notify_recovery_enabled
           type: BOOLEAN NOT NULL DEFAULT TRUE
         - name: created_at
           type: TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -372,7 +427,7 @@ x-database:
           allowedValues: [SCHEDULED, MANUAL, STARTUP]
         - name: status
           type: VARCHAR(20) NOT NULL
-          allowedValues: [RUNNING, COMPLETED, FAILED]
+          allowedValues: [RUNNING, COMPLETED, FAILED, TIMED_OUT, STALE]
         - name: started_at
           type: TIMESTAMPTZ NOT NULL
         - name: finished_at
@@ -761,10 +816,10 @@ x-configuration:
       default: "86400"
     - name: WATCHDOG_FIX_DEFAULT_RETRY_COUNT
       required: false
-      default: "3"
+      default: "1"
     - name: WATCHDOG_FIX_DEFAULT_RETRY_DELAY_SECONDS
       required: false
-      default: "60"
+      default: "10"
     - name: WATCHDOG_MISSING_PROPERTY_RETRY_COUNT
       required: false
       default: "3"

@@ -59,6 +59,8 @@ enum class CheckRunStatus {
 	RUNNING,
 	COMPLETED,
 	FAILED,
+	TIMED_OUT,
+	STALE,
 }
 
 enum class DeviceCheckStatus {
@@ -66,6 +68,7 @@ enum class DeviceCheckStatus {
 	DEGRADED,
 	OFFLINE,
 	UNKNOWN,
+	SKIPPED,
 }
 
 enum class RuleCheckStatus {

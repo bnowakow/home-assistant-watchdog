@@ -66,6 +66,19 @@ class Zigbee2MqttDeviceProviderTest {
 		assertFalse(cache.fixConfirmation("Bedroom Switch", "operation_mode_right")?.confirmed ?: true)
 	}
 
+	@Test
+	fun `publishes active property refresh to friendly name get topic`() {
+		cache.updateBridgeDevices(
+			"""[{"ieee_address":"0xabc","friendly_name":"Bedroom Switch","definition":{"model":"TS0012"}}]"""
+				.toByteArray(),
+		)
+
+		provider.refreshProperties(device(), setOf("state_right", "battery"))
+
+		assertEquals("zigbee2mqtt-2/Bedroom Switch/get", mqttGateway.published.single().topic)
+		assertEquals("""{"state_right":"","battery":""}""", mqttGateway.published.single().payload.decodeToString())
+	}
+
 	private fun device(): Device =
 		Device(
 			providerType = ProviderType.ZIGBEE2MQTT,

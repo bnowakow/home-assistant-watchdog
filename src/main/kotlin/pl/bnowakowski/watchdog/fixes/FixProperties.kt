@@ -11,9 +11,9 @@ import org.springframework.validation.annotation.Validated
 @ConfigurationProperties("watchdog.fix")
 data class FixProperties(
 	@field:Min(0)
-	val defaultRetryCount: Int = 3,
+	val defaultRetryCount: Int = 1,
 	@field:Min(0)
-	val defaultRetryDelaySeconds: Long = 60,
+	val defaultRetryDelaySeconds: Long = 10,
 	@field:Min(0)
 	val defaultCooldownSeconds: Long = 300,
 )

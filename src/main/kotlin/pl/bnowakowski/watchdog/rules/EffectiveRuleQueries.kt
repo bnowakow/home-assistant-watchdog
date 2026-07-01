@@ -106,6 +106,7 @@ class EffectiveRuleQueries(
 			powerSource = PowerSource.valueOf(getString("power_source")),
 			criticality = Criticality.valueOf(getString("criticality")),
 			enabled = getBoolean("enabled"),
+			skipChecks = getBoolean("skip_checks"),
 			providerMetadata = jsonNode(getString("provider_metadata")) ?: JsonDefaults.emptyObject(),
 			lastSeenAt = instant("last_seen_at"),
 			createdAt = instant("created_at") ?: Instant.EPOCH,

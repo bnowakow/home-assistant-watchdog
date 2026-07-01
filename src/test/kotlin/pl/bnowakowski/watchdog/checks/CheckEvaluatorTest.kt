@@ -12,6 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
+import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import pl.bnowakowski.watchdog.domain.ComparisonOperator
 import pl.bnowakowski.watchdog.domain.Criticality
@@ -59,6 +60,29 @@ class CheckEvaluatorTest {
 	}
 
 	@Test
+	fun `records expected and received values in desired property mismatch message`() {
+		val device = device()
+		whenever(provider.providerType).thenReturn(ProviderType.ZIGBEE2MQTT)
+		whenever(provider.readSnapshot(device)).thenReturn(
+			snapshot(device, mapOf("operation_mode_left" to objectMapper.readTree(""""control_left""""))),
+		)
+
+		val result = evaluator().evaluate(
+			EffectiveRulesView(
+				device = device,
+				rules = listOf(rule(propertyPath = "operation_mode_left", expectedJson = """"decoupled_left"""")),
+			),
+		)
+
+		val ruleResult = result.ruleResults.single()
+		assertEquals(RuleCheckStatus.MISMATCH, ruleResult.status)
+		assertEquals(
+			"""Value at operation_mode_left does not satisfy EQUALS; expected "decoupled_left", received "control_left"""",
+			ruleResult.message,
+		)
+	}
+
+	@Test
 	fun `retries missing property and records error when still missing`() {
 		val device = device()
 		whenever(provider.providerType).thenReturn(ProviderType.ZIGBEE2MQTT)
@@ -73,6 +97,48 @@ class CheckEvaluatorTest {
 
 		assertEquals(DeviceCheckStatus.DEGRADED, result.status)
 		assertEquals(RuleCheckStatus.ERROR, result.ruleResults.single().status)
+	}
+
+	@Test
+	fun `actively refreshes missing checked property before retrying snapshot`() {
+		val device = device()
+		whenever(provider.providerType).thenReturn(ProviderType.ZIGBEE2MQTT)
+		whenever(provider.readSnapshot(device)).thenReturn(
+			snapshot(device, emptyMap()),
+			snapshot(device, mapOf("state_right" to objectMapper.readTree(""""ON""""))),
+		)
+
+		val result = evaluator().evaluate(
+			EffectiveRulesView(
+				device = device,
+				rules = listOf(rule(propertyPath = "state_right", expectedJson = """"ON"""")),
+			),
+		)
+
+		assertEquals(DeviceCheckStatus.HEALTHY, result.status)
+		assertEquals(RuleCheckStatus.MATCH, result.ruleResults.single().status)
+		verify(provider).refreshProperties(device, setOf("state_right"))
+	}
+
+	@Test
+	fun `actively refreshes checked property when cached value is json null`() {
+		val device = device()
+		whenever(provider.providerType).thenReturn(ProviderType.ZIGBEE2MQTT)
+		whenever(provider.readSnapshot(device)).thenReturn(
+			snapshot(device, mapOf("operation_mode_left" to JsonNodeFactory.instance.nullNode())),
+			snapshot(device, mapOf("operation_mode_left" to objectMapper.readTree(""""decoupled""""))),
+		)
+
+		val result = evaluator().evaluate(
+			EffectiveRulesView(
+				device = device,
+				rules = listOf(rule(propertyPath = "operation_mode_left", expectedJson = """"decoupled"""")),
+			),
+		)
+
+		assertEquals(DeviceCheckStatus.HEALTHY, result.status)
+		assertEquals(RuleCheckStatus.MATCH, result.ruleResults.single().status)
+		verify(provider).refreshProperties(device, setOf("operation_mode_left"))
 	}
 
 	@Test

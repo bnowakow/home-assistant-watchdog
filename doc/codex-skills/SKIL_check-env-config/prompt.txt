@@ -1,0 +1,1 @@
+Use the check-env-config skill to verify .env and .env.sample in this repository.

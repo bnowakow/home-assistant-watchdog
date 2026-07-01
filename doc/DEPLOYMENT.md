@@ -45,6 +45,11 @@ Use this stage before enabling any writes.
 5. Confirm device snapshots, check results, and parameter history before changing any rule to
    `AUTO_FIX`.
 
+To keep manual checks available while pausing the scheduler, set
+`WATCHDOG_CHECK_SCHEDULED_ENABLED=false`. To queue one scheduled check as soon as the application is
+ready, set `WATCHDOG_CHECK_RUN_ON_STARTUP=true`. `WATCHDOG_CHECK_RUN_TIMEOUT` limits a single run so
+a stuck provider call cannot keep the run open indefinitely.
+
 ## Limited Auto-Fix
 
 Enable writes gradually.
@@ -58,15 +63,21 @@ Enable writes gradually.
    make docker-app-logs
    ```
 
+Deployment defaults for fixes are `WATCHDOG_FIX_DEFAULT_RETRY_COUNT`,
+`WATCHDOG_FIX_DEFAULT_RETRY_DELAY_SECONDS`, and `WATCHDOG_FIX_DEFAULT_COOLDOWN_SECONDS`. Group
+rules can override retry and cooldown behavior per checked property.
+
 ## Critical Pushover Alerts
 
 1. Set deployment-level notification secrets:
    ```properties
    APP_NOTIFICATIONS_ENABLED=true
-   APP_NOTIFICATIONS_ENCRYPTION_KEY=<base64-32-byte-key>
+   APP_NOTIFICATIONS_PUSHOVER_USER_KEY_ENCRYPTION_SECRET=<base64-32-byte-key>
    APP_NOTIFICATIONS_PUSHOVER_APP_TOKEN=...
    ```
-2. Configure each user's Pushover key and optional device targets in Settings.
+   `APP_NOTIFICATIONS_PUSHOVER_USER_KEY_ENCRYPTION_SECRET` is the app's encryption secret for
+   storing Pushover user keys at rest. It is not the Pushover "Your User Key" value.
+2. Configure each user's Pushover "Your User Key" and optional device targets in Settings.
 3. Enable notification flags only for the critical groups/rules that should alert.
 4. Keep cooldowns conservative at first; the default is 24 hours.
 

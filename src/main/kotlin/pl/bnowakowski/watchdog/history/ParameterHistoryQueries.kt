@@ -3,7 +3,11 @@
 
 package pl.bnowakowski.watchdog.history
 
+import java.sql.Types
 import java.time.Instant
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.jdbc.support.GeneratedKeyHolder
 import org.springframework.stereotype.Repository
@@ -89,7 +93,7 @@ class ParameterHistoryQueries(
 				:checkRunId
 			)
 			""".trimIndent(),
-			org.springframework.jdbc.core.namedparam.MapSqlParameterSource(
+			MapSqlParameterSource(
 				mapOf(
 					"deviceId" to entry.deviceId,
 					"ruleId" to entry.ruleId,
@@ -103,10 +107,9 @@ class ParameterHistoryQueries(
 					"previousValueJson" to entry.previousValueJson?.let(objectMapper::writeValueAsString),
 					"changed" to entry.changed,
 					"source" to entry.source.name,
-					"observedAt" to entry.observedAt,
 					"checkRunId" to entry.checkRunId,
 				),
-			),
+			).addValue("observedAt", entry.observedAt.toUtcOffsetDateTime(), Types.TIMESTAMP_WITH_TIMEZONE),
 			keyHolder,
 			arrayOf("id"),
 		)
@@ -119,8 +122,12 @@ class ParameterHistoryQueries(
 			DELETE FROM device_parameter_history
 			WHERE observed_at < :cutoff
 			""".trimIndent(),
-			mapOf("cutoff" to cutoff),
+			MapSqlParameterSource()
+				.addValue("cutoff", cutoff.toUtcOffsetDateTime(), Types.TIMESTAMP_WITH_TIMEZONE),
 		)
+
+	private fun Instant.toUtcOffsetDateTime(): OffsetDateTime =
+		OffsetDateTime.ofInstant(this, ZoneOffset.UTC)
 }
 
 data class ParameterHistoryLatestValue(

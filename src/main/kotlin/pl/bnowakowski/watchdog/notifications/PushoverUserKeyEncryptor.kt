@@ -36,11 +36,11 @@ class PushoverUserKeyEncryptor(
 	}
 
 	private fun secretKey(): SecretKeySpec {
-		val configured = properties.encryptionKey.trim()
-		require(configured.isNotBlank()) { "app.notifications.encryption-key must be configured" }
+		val configured = properties.pushoverUserKeyEncryptionSecret.trim()
+		require(configured.isNotBlank()) { "app.notifications.pushover-user-key-encryption-secret must be configured" }
 		val keyBytes = decodeKey(configured)
 		require(keyBytes.size in AES_KEY_SIZES) {
-			"app.notifications.encryption-key must decode to 16, 24, or 32 bytes"
+			"app.notifications.pushover-user-key-encryption-secret must decode to 16, 24, or 32 bytes"
 		}
 		return SecretKeySpec(keyBytes, "AES")
 	}

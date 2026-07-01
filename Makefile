@@ -1,7 +1,8 @@
-.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit
+.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
 
 -include .env
 
+CODEX_HOME ?= $(HOME)/.codex
 PROFILE ?= $(SPRING_PROFILES_ACTIVE)
 PROFILE ?= local
 POSTGRES_PORT ?= 5433
@@ -50,6 +51,8 @@ help:
 	@printf "    %-28s %s\n" "bump-patch" "Auto-increment patch for x.y.z-SNAPSHOT versions"
 	@printf "    %-28s %s\n" "bump-minor" "Auto-increment minor and reset patch for x.y.z-SNAPSHOT versions"
 	@printf "    %-28s %s\n" "codex-commit" "Bump version if needed, stage, commit with Codex, and optionally push"
+	@printf "    %-28s %s\n" "install-codex-skills" "Install all project Codex skills into CODEX_HOME"
+	@printf "    %-28s %s\n" "codex-skill-prompts" "Show sample prompts for project Codex skills"
 	@printf "\n"
 
 docker-up: docker-data-permissions
@@ -170,3 +173,49 @@ bump-minor:
 
 codex-commit:
 	utilities/codex-commit.sh
+
+# Install repository-provided Codex skills into the local Codex home.
+install-codex-skills:
+	@mkdir -p "$(CODEX_HOME)/skills"
+	@count=0; \
+	for skill in doc/codex-skills/SKIL_*; do \
+		if [ -d "$$skill" ]; then \
+			name=$$(basename "$$skill"); \
+			rm -rf "$(CODEX_HOME)/skills/$$name"; \
+			cp -R "$$skill" "$(CODEX_HOME)/skills/"; \
+			count=$$((count + 1)); \
+		fi; \
+	done; \
+	if [ "$$count" -eq 0 ]; then \
+		echo "No Codex skills found in doc/codex-skills/SKIL_*"; \
+		exit 1; \
+	fi
+	@echo "✓ Codex skills installed to $(CODEX_HOME)/skills"
+
+# Show sample prompts for repository-provided Codex skills.
+codex-skill-prompts:
+	@printf "Codex skill sample prompts\n\n"
+	@count=0; \
+	missing=0; \
+	for skill in doc/codex-skills/SKIL_*; do \
+		if [ -d "$$skill" ]; then \
+			name=$$(basename "$$skill" | sed 's/^SKIL_//'); \
+			prompt="$$skill/prompt.txt"; \
+			printf '\033[1;94m%s\033[0m\n' "$$name"; \
+			if [ -f "$$prompt" ]; then \
+				sed 's/^/  /' "$$prompt"; \
+			else \
+				echo "  Missing $$prompt"; \
+				missing=$$((missing + 1)); \
+			fi; \
+			printf '\n'; \
+			count=$$((count + 1)); \
+		fi; \
+	done; \
+	if [ "$$count" -eq 0 ]; then \
+		echo "No Codex skills found in doc/codex-skills/SKIL_*"; \
+		exit 1; \
+	fi; \
+	if [ "$$missing" -gt 0 ]; then \
+		exit 1; \
+	fi

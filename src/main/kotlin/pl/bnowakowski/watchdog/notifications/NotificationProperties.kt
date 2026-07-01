@@ -9,7 +9,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 @ConfigurationProperties(prefix = "app.notifications")
 data class NotificationProperties(
 	val enabled: Boolean = false,
-	val encryptionKey: String = "",
+	val pushoverUserKeyEncryptionSecret: String = "",
 	val pushover: Pushover = Pushover(),
 ) {
 	data class Pushover(
