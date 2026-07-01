@@ -1,4 +1,4 @@
-.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs sync-env-files app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
+.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-restore docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs sync-env-files app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
 
 -include .env
 
@@ -36,6 +36,7 @@ help:
 	@printf "  \033[1;94m%s\033[0m\n" "PostgreSQL in Docker"
 	@printf "    %-28s %s\n" "docker-data-permissions" "Prepare docker-data directories and permissions"
 	@printf "    %-28s %s\n" "docker-pg-backup" "Dump PostgreSQL and zip it into docker-data/backup/postgres"
+	@printf "    %-28s %s\n" "docker-pg-restore" "Restore PostgreSQL from a selected backup zip"
 	@printf "    %-28s %s\n" "docker-pg-history-stats" "Show parameter-history row counts and oldest/newest timestamps"
 	@printf "    %-28s %s\n" "install-pg-backup-cron" "Install daily PostgreSQL backup cron job"
 	@printf "    %-28s %s\n" "ensure-pg-backup-cron" "Install daily PostgreSQL backup cron job only when missing"
@@ -106,6 +107,7 @@ sync-env-files:
 
 docker-data-permissions:
 	@mkdir -p ./docker-data/backup/postgres ./docker-data/postgres ./docker-data/data ./logs
+	@sudo chown $(LOCAL_UID):$(LOCAL_GID) ./logs/home-assistant-watchdog.log 2>/dev/null || true
 	@chmod -R a+rwX ./logs
 	@docker run --rm -v "$(PWD)/docker-data:/work" alpine:3.20 \
 		sh -c "mkdir -p /work/postgres /work/data /work/backup/postgres && chown -R $(LOCAL_UID):$(LOCAL_GID) /work/backup && chmod 755 /work /work/postgres /work/data && chmod -R u+rwX,go-rwx /work/backup"
@@ -121,6 +123,12 @@ docker-pg-backup: docker-data-permissions
 	zip -j "$$zip_path" "$$sql_path" >/dev/null; \
 	rm "$$sql_path"; \
 	echo "Backup written to $$zip_path"
+
+docker-pg-restore:
+	@mkdir -p ./docker-data/backup/postgres
+	docker compose -f compose.yaml up -d postgres
+	@BACKUP="$(BACKUP)" POSTGRES_USER="$(POSTGRES_USER)" POSTGRES_DB="$(POSTGRES_DB)" \
+		./utilities/docker-pg-restore.sh ./docker-data/backup/postgres compose.yaml postgres
 
 docker-pg-history-stats:
 	docker compose -f compose.yaml exec -T postgres psql -U "$(POSTGRES_USER)" -d "$(POSTGRES_DB)" \

@@ -48,12 +48,12 @@ services:
       - 'WATCHDOG_STALE_BATTERY_SECONDS=${WATCHDOG_STALE_BATTERY_SECONDS:-86400}'
       - 'WATCHDOG_STALE_CRITICAL_SECONDS=${WATCHDOG_STALE_CRITICAL_SECONDS:-3600}'
     ports:
-      - '127.0.0.1:${APP_PORT:-8080}:8080'
+      - '0.0.0.0:${APP_PORT:-8090}:8090'
     volumes:
       - './logs:/app/logs'
       - './docker-data/data:/app/data'
     healthcheck:
-      test: ['CMD-SHELL', 'curl -fsS http://localhost:8080/actuator/health/readiness >/dev/null']
+      test: ['CMD-SHELL', 'curl -fsS http://localhost:8090/actuator/health/readiness >/dev/null']
       interval: 30s
       timeout: 5s
       retries: 5

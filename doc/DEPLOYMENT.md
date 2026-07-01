@@ -106,6 +106,10 @@ If growth is too high, reduce `WATCHDOG_PARAMETER_HISTORY_RETENTION_DAYS` or kee
    ```
 5. Keep `./docker-data/postgres` as the mounted PostgreSQL volume and
    `./docker-data/backup/postgres` as the backup location.
+   Restore a backup with:
+   ```sh
+   make docker-pg-restore
+   ```
 6. Put a reverse proxy in front of `${APP_PORT}` if exposing the UI beyond localhost, enable
    `APP_SECURITY_ENABLED=true`, configure Google OAuth credentials, and set
    `SESSION_COOKIE_SECURE=true` when served over HTTPS.

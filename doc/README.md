@@ -43,6 +43,8 @@ Project documentation, specifications, and implementation plans.
   retry, and missing-property retry columns can override the deployment defaults.
 - `make docker-pg-backup` dumps the Compose PostgreSQL database into
   `docker-data/backup/postgres/`.
+- `make docker-pg-restore` opens an ncurses backup picker and restores the selected zip.
+  Use `BACKUP=/path/to/backup.zip make docker-pg-restore` to skip the picker.
 - `make install-pg-backup-cron` installs a daily database backup cron job for the current user.
   Override `CRON_SCHEDULE` to change the schedule, for example:
   `make install-pg-backup-cron CRON_SCHEDULE="30 3 * * *"`.
