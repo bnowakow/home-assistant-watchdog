@@ -15,14 +15,24 @@ class NotificationPreferenceService(
 		appUserId: Long,
 		input: NotificationPreferenceInput,
 	): NotificationPreference {
-		val userKey = input.pushoverUserKey?.trim()?.takeIf { it.isNotBlank() }
-			?: throw IllegalArgumentException("Pushover user key is required")
 		val devices = PushoverDevices.normalize(input.pushoverDevices)
-		pushoverClient.validateUser(userKey, devices)
+		val existingPreference = queries.findPushoverPreference(appUserId)
+		val trimmedUserKey = input.pushoverUserKey?.trim()?.takeIf { it.isNotBlank() }
+		val userKeyEncrypted = when (trimmedUserKey) {
+			null -> requireNotNull(existingPreference?.pushoverUserKeyEncrypted)
+			else -> {
+				pushoverClient.validateUser(trimmedUserKey, devices)
+				encryptor.encrypt(trimmedUserKey)
+			}
+		}
+		val userKeySuffix = when (trimmedUserKey) {
+			null -> requireNotNull(existingPreference?.pushoverUserKeySuffix)
+			else -> trimmedUserKey.takeLast(KEY_SUFFIX_LENGTH)
+		}
 		return queries.upsertPushoverPreference(
 			appUserId = appUserId,
-			pushoverUserKeyEncrypted = encryptor.encrypt(userKey),
-			pushoverUserKeySuffix = userKey.takeLast(KEY_SUFFIX_LENGTH),
+			pushoverUserKeyEncrypted = userKeyEncrypted,
+			pushoverUserKeySuffix = userKeySuffix,
 			pushoverDevices = devices,
 			notifyMismatchEnabled = input.notifyMismatchEnabled,
 			notifyLowBatteryEnabled = input.notifyLowBatteryEnabled,
