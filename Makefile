@@ -1,4 +1,4 @@
-.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
+.PHONY: help docker-up docker-app-up docker-down docker-data-permissions docker-pg-backup docker-pg-history-stats install-pg-backup-cron ensure-pg-backup-cron docker-pg-shell docker-logs docker-app-logs sync-env-files app-health build run run-local run-prod test clean bump-patch bump-minor codex-commit install-codex-skills codex-skill-prompts
 
 -include .env
 
@@ -16,6 +16,8 @@ TEST_GRADLE_JVMARGS ?=
 CRON_SCHEDULE ?= 0 2 * * *
 CRON_MAKE ?= $(shell command -v make 2>/dev/null || echo make)
 PG_BACKUP_CRON_MARKER ?= home-assistant-watchdog-docker-pg-backup
+ENV_SYNC_HOST ?= proxmox2-old.tailscale.bnowakowski.pl
+ENV_SYNC_DIR ?= /home/sup/code/home-assistant-watchdog
 export GRADLE_USER_HOME
 
 help:
@@ -29,6 +31,7 @@ help:
 	@printf "    %-28s %s\n" "docker-down" "Stop and remove local infrastructure containers"
 	@printf "    %-28s %s\n" "docker-logs" "Show compose logs in follow mode"
 	@printf "    %-28s %s\n" "docker-app-logs" "Show application logs in follow mode"
+	@printf "    %-28s %s\n" "sync-env-files" "Sync local .env to the remote server and verify byte-for-byte"
 	@printf "\n"
 	@printf "  \033[1;94m%s\033[0m\n" "PostgreSQL in Docker"
 	@printf "    %-28s %s\n" "docker-data-permissions" "Prepare docker-data directories and permissions"
@@ -80,6 +83,26 @@ docker-logs:
 
 docker-app-logs:
 	docker compose -f compose.yaml logs -f springboot
+
+# Sync this laptop's .env to the remote server, then verify the remote file byte-for-byte.
+sync-env-files:
+	@set -e; \
+	blue=$$(printf '\033[1;94m'); \
+	green=$$(printf '\033[1;92m'); \
+	red=$$(printf '\033[1;91m'); \
+	reset=$$(printf '\033[0m'); \
+	remote_env=$$(mktemp); \
+	trap 'rm -f "$$remote_env"' EXIT; \
+	rsync -a -v .env $(ENV_SYNC_HOST):$(ENV_SYNC_DIR)/.env; \
+	echo ""; \
+	printf "%sVerifying environment file ...%s\n" "$$blue" "$$reset"; \
+	ssh $(ENV_SYNC_HOST) "cat $(ENV_SYNC_DIR)/.env" > "$$remote_env"; \
+	if cmp -s .env "$$remote_env"; then \
+		printf "%s✓ Remote .env matches local .env%s\n" "$$green" "$$reset"; \
+	else \
+		printf "%s✗ Remote .env differs from local .env%s\n" "$$red" "$$reset"; \
+		exit 1; \
+	fi
 
 docker-data-permissions:
 	@mkdir -p ./docker-data/backup/postgres ./docker-data/postgres ./docker-data/data ./logs
